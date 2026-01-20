@@ -45,6 +45,7 @@ const CONFIG = {
 
   // Validation
   MAX_QTY: 9999,
+  REPORT_REFRESH_MS: 1000 * 60 * 5,
 
   // If your stores are fixed, put them here (optional). If empty, free-text store entry.
   STORES: [], // e.g. ["Boniface", "Huffman", "Muldoon", "Lake Otis", "Camelot"]
@@ -136,11 +137,13 @@ const ui = {
   reportDay: $("reportDay"),
   reportMonth: $("reportMonth"),
   reportYear: $("reportYear"),
+  reportSort: $("reportSort"),
   reportStoreBody: $("reportStoreBody"),
   reportStoreEmpty: $("reportStoreEmpty"),
   compareProduct: $("compareProduct"),
   compareStart: $("compareStart"),
   compareEnd: $("compareEnd"),
+  compareSort: $("compareSort"),
   compareBody: $("compareBody"),
   compareEmpty: $("compareEmpty"),
 };
@@ -168,6 +171,18 @@ const state = {
   lastCacheIso: "",   // when cached
   categoryIndex: new Map(), // category -> {start, end}
   orders: [],
+  reports: {
+    product: "",
+    store: "all",
+    day: "",
+    month: "",
+    year: "",
+    compareProduct: "",
+    compareStart: "",
+    compareEnd: "",
+    sort: "qty-desc",
+    compareSort: "qty-desc",
+  },
 };
 
 // =========================
@@ -935,6 +950,13 @@ function setReportStatus(message) {
   ui.reportStatus.textContent = message;
 }
 
+function isReportDataStale() {
+  if (!state.ordersUpdatedAt) return true;
+  const last = new Date(state.ordersUpdatedAt);
+  if (Number.isNaN(last.getTime())) return true;
+  return (Date.now() - last.getTime()) > CONFIG.REPORT_REFRESH_MS;
+}
+
 async function refreshReports({ force = false } = {}) {
   if (!CONFIG.SCRIPT_URL || CONFIG.SCRIPT_URL.includes("PASTE_")) {
     setReportStatus("History: unavailable (missing Apps Script URL).");
@@ -990,7 +1012,7 @@ function setActiveTab(tab) {
     }
     updateReportOptions();
     renderReports();
-    if (!state.orders.length) {
+    if (!state.orders.length || isReportDataStale()) {
       refreshReports();
     }
   }
@@ -1083,6 +1105,8 @@ function syncReportFiltersFromInputs() {
   state.reports.compareProduct = normalizeProductKey(ui.compareProduct?.value);
   state.reports.compareStart = ui.compareStart?.value || "";
   state.reports.compareEnd = ui.compareEnd?.value || "";
+  state.reports.sort = ui.reportSort?.value || state.reports.sort;
+  state.reports.compareSort = ui.compareSort?.value || state.reports.compareSort;
 }
 
 function passesDateFilters(orderDate, filters) {
@@ -1102,11 +1126,31 @@ function itemMatchesProduct(item, productKey) {
   return item.sku === productKey || item.item_no === productKey || item.name === productKey;
 }
 
+function sortStores(stores, totals, sortKey) {
+  const list = Array.from(stores);
+  const compareQty = (a, b) => (totals.get(b) || 0) - (totals.get(a) || 0);
+  const compareQtyAsc = (a, b) => (totals.get(a) || 0) - (totals.get(b) || 0);
+  const compareNameAsc = (a, b) => a.localeCompare(b);
+  const compareNameDesc = (a, b) => b.localeCompare(a);
+
+  switch (sortKey) {
+    case "qty-asc":
+      return list.sort(compareQtyAsc);
+    case "store-desc":
+      return list.sort(compareNameDesc);
+    case "store-asc":
+      return list.sort(compareNameAsc);
+    case "qty-desc":
+    default:
+      return list.sort(compareQty);
+  }
+}
+
 function renderReports() {
   if (!ui.reportsPanel) return;
   syncReportFiltersFromInputs();
 
-  const { product, store, day, month, year } = state.reports;
+  const { product, store, day, month, year, sort } = state.reports;
   const storeTotals = new Map();
   const stores = getStoreList();
   stores.forEach((storeName) => storeTotals.set(storeName, 0));
@@ -1131,8 +1175,11 @@ function renderReports() {
   if (ui.reportStoreBody) {
     ui.reportStoreBody.innerHTML = "";
     if (showProductTotals && stores.length) {
-      const rows = (store === "all" ? stores : stores.filter((name) => name === store))
-        .sort((a, b) => (storeTotals.get(b) || 0) - (storeTotals.get(a) || 0));
+      const rows = sortStores(
+        store === "all" ? stores : stores.filter((name) => name === store),
+        storeTotals,
+        sort
+      );
       rows.forEach((storeName) => {
         const row = document.createElement("tr");
         const nameCell = document.createElement("td");
@@ -1154,6 +1201,7 @@ function renderReports() {
   }
 
   const compareProduct = state.reports.compareProduct;
+  const compareSort = state.reports.compareSort;
   const compareStart = parseDateValue(state.reports.compareStart);
   const compareEnd = parseDateValue(state.reports.compareEnd);
   const compareTotals = new Map();
@@ -1185,9 +1233,7 @@ function renderReports() {
   if (ui.compareBody) {
     ui.compareBody.innerHTML = "";
     if (compareValid && stores.length) {
-      const sortedStores = Array.from(stores).sort((a, b) => {
-        return (compareTotals.get(b) || 0) - (compareTotals.get(a) || 0);
-      });
+      const sortedStores = sortStores(stores, compareTotals, compareSort);
       sortedStores.forEach((storeName) => {
         const row = document.createElement("tr");
         const nameCell = document.createElement("td");
@@ -1199,7 +1245,7 @@ function renderReports() {
         ui.compareBody.appendChild(row);
       });
       if (ui.reportTopStore) {
-        const topStore = sortedStores[0];
+        const topStore = sortStores(stores, compareTotals, "qty-desc")[0];
         ui.reportTopStore.textContent = topStore
           ? `${topStore} (${compareTotals.get(topStore) || 0})`
           : "—";
@@ -1468,9 +1514,11 @@ function wireEvents() {
   ui.reportMonth?.addEventListener("change", rerenderReports);
   ui.reportYear?.addEventListener("change", rerenderReports);
   ui.reportDay?.addEventListener("change", rerenderReports);
+  ui.reportSort?.addEventListener("change", rerenderReports);
   ui.compareProduct?.addEventListener("change", rerenderReports);
   ui.compareStart?.addEventListener("change", rerenderReports);
   ui.compareEnd?.addEventListener("change", rerenderReports);
+  ui.compareSort?.addEventListener("change", rerenderReports);
   ui.refreshReportsBtn?.addEventListener("click", () => refreshReports({ force: true }));
 
   // Optional: category jump toggle
