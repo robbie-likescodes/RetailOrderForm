@@ -4,45 +4,43 @@
  * Paste this into your Google Apps Script project alongside your existing
  * doGet() handler. It expects the JSON payload from app.js.
  ***************/
-const SHEET_ORDERS = "Orders";
-const SHEET_ORDER_ITEMS = "OrderItems";
-
 function doPost(e) {
+  const requestId = Utilities.getUuid();
   try {
     const payload = parseJson_(e);
     const validationError = validateOrder_(payload);
     if (validationError) {
-      return jsonResponse({
-        ok: false,
-        error: validationError,
-        updated_at: new Date().toISOString(),
-      });
+      return jsonResponse(buildError_(
+        validationError.message,
+        validationError.code,
+        validationError.details,
+        requestId
+      ));
     }
 
     const orderId = Utilities.getUuid();
     const createdAt = new Date().toISOString();
 
-    const items = payload.items
-      .map(item => ({
-        item_no: String(item.item_no || "").trim(),
-        sku: String(item.sku || "").trim(),
-        name: String(item.name || "").trim(),
-        category: String(item.category || "").trim(),
-        unit: String(item.unit || "").trim(),
-        pack_size: String(item.pack_size || "").trim(),
-        qty: Number(item.qty || 0),
-      }))
-      .filter(item => item.sku && item.name && item.qty > 0);
-
-    if (items.length === 0) {
-      return jsonResponse({
-        ok: false,
-        error: "Order has no items with quantities.",
-        updated_at: createdAt,
-      });
+    const normalized = normalizeItems_(payload.items);
+    if (normalized.rejected.length) {
+      return jsonResponse(buildError_(
+        "Order has invalid items.",
+        "INVALID_ITEMS",
+        { rejected_items: normalized.rejected },
+        requestId
+      ));
     }
 
-    const totals = items.reduce(
+    if (normalized.items.length === 0) {
+      return jsonResponse(buildError_(
+        "Order has no items with quantities.",
+        "NO_VALID_ITEMS",
+        null,
+        requestId
+      ));
+    }
+
+    const totals = normalized.items.reduce(
       (acc, item) => {
         acc.itemCount += 1;
         acc.totalQty += item.qty;
@@ -51,7 +49,7 @@ function doPost(e) {
       { itemCount: 0, totalQty: 0 }
     );
 
-    const ordersSheet = ensureSheet_(SHEET_ORDERS, [
+    const ordersSheet = ensureSheet_(CONFIG.sheets.orders, [
       "order_id",
       "created_at",
       "store",
@@ -83,7 +81,7 @@ function doPost(e) {
       (payload.client && payload.client.userAgent) || "",
     ]);
 
-    const itemsSheet = ensureSheet_(SHEET_ORDER_ITEMS, [
+    const itemsSheet = ensureSheet_(CONFIG.sheets.orderItems, [
       "order_id",
       "item_no",
       "sku",
@@ -94,7 +92,7 @@ function doPost(e) {
       "qty",
     ]);
 
-    const itemRows = items.map(item => ([
+    const itemRows = normalized.items.map(item => ([
       orderId,
       item.item_no,
       item.sku,
@@ -114,20 +112,29 @@ function doPost(e) {
     return jsonResponse({
       ok: true,
       order_id: orderId,
+      request_id: requestId,
       updated_at: createdAt,
     });
   } catch (err) {
-    return jsonResponse({
-      ok: false,
-      error: String(err),
-      updated_at: new Date().toISOString(),
-    });
+    const message = err && err.message ? err.message : String(err);
+    let errorCode = "UNHANDLED_ERROR";
+    if (message === "Missing JSON body.") errorCode = "MISSING_JSON_BODY";
+    if (message === "Invalid JSON body.") errorCode = "INVALID_JSON_BODY";
+    if (message.indexOf("Unsupported content type:") === 0) {
+      errorCode = "UNSUPPORTED_CONTENT_TYPE";
+    }
+    return jsonResponse(buildError_(message, errorCode, null, requestId));
   }
 }
 
 function parseJson_(e) {
   if (!e || !e.postData || !e.postData.contents) {
     throw new Error("Missing JSON body.");
+  }
+
+  const contentType = String(e.postData.type || "").toLowerCase();
+  if (contentType && !contentType.includes("application/json")) {
+    throw new Error(`Unsupported content type: ${e.postData.type}`);
   }
 
   try {
@@ -138,14 +145,57 @@ function parseJson_(e) {
 }
 
 function validateOrder_(payload) {
-  if (!payload) return "Missing order payload.";
-  if (!payload.store) return "Store is required.";
-  if (!payload.placed_by) return "Placed by is required.";
-  if (!payload.requested_date) return "Requested date is required.";
-  if (!Array.isArray(payload.items) || payload.items.length === 0) {
-    return "Order must include at least one item.";
+  if (!payload) {
+    return { message: "Missing order payload.", code: "MISSING_PAYLOAD" };
   }
-  return "";
+  if (!payload.store) {
+    return { message: "Store is required.", code: "MISSING_STORE" };
+  }
+  if (!payload.placed_by) {
+    return { message: "Placed by is required.", code: "MISSING_PLACED_BY" };
+  }
+  if (!payload.requested_date) {
+    return { message: "Requested date is required.", code: "MISSING_REQUESTED_DATE" };
+  }
+  if (!Array.isArray(payload.items) || payload.items.length === 0) {
+    return { message: "Order must include at least one item.", code: "MISSING_ITEMS" };
+  }
+  return null;
+}
+
+function normalizeItems_(items) {
+  const normalizedItems = [];
+  const rejectedItems = [];
+
+  (items || []).forEach((item, index) => {
+    const normalized = {
+      item_no: String(item.item_no || "").trim(),
+      sku: String(item.sku || "").trim(),
+      name: String(item.name || "").trim(),
+      category: String(item.category || "").trim(),
+      unit: String(item.unit || "").trim(),
+      pack_size: String(item.pack_size || "").trim(),
+      qty: Number(item.qty || 0),
+    };
+    const reasons = [];
+    if (!normalized.sku) reasons.push("Missing sku.");
+    if (!normalized.name) reasons.push("Missing name.");
+    if (!Number.isFinite(normalized.qty) || normalized.qty <= 0) {
+      reasons.push("Quantity must be greater than zero.");
+    }
+
+    if (reasons.length) {
+      rejectedItems.push({
+        index,
+        reasons,
+        item: normalized,
+      });
+    } else {
+      normalizedItems.push(normalized);
+    }
+  });
+
+  return { items: normalizedItems, rejected: rejectedItems };
 }
 
 function ensureSheet_(name, headers) {
