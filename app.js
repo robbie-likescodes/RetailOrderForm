@@ -717,6 +717,16 @@ function renderItems() {
   renderSelectedSummary();
 }
 
+function renderWizard() {
+  renderSelectedSummary();
+  setHidden(ui.review, true);
+  if (state.selectedCategory) {
+    showItems();
+  } else {
+    showCatalog();
+  }
+}
+
 // =========================
 // NAVIGATION
 // =========================
