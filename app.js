@@ -55,6 +55,7 @@ const CONFIG = {
 const urlParams = new URLSearchParams(window.location.search);
 const TOKEN = urlParams.get("token") || "";                 // optional shared key / store token
 const STORE_LOCK = urlParams.get("store") || "";            // optional store prefill/lock
+const VIEW = (urlParams.get("view") || "").toLowerCase();
 const DEBUG = (urlParams.get("debug") || "").toLowerCase() === "true";
 
 // =========================
@@ -76,6 +77,18 @@ const CACHE = {
 // =========================
 const $ = (id) => document.getElementById(id);
 const ui = {
+  homeScreen: $("homeScreen"),
+  orderApp: $("orderApp"),
+  homeOrder: $("homeOrder"),
+  homeDrivers: $("homeDrivers"),
+  homeHistory: $("homeHistory"),
+  homeReports: $("homeReports"),
+  topMenuToggle: $("topMenuToggle"),
+  topMenuList: $("topMenuList"),
+  topMenuOrder: $("topMenuOrder"),
+  topMenuDrivers: $("topMenuDrivers"),
+  topMenuHistory: $("topMenuHistory"),
+  topMenuReports: $("topMenuReports"),
   lastUpdated: $("lastUpdated"),
   refreshBtn: $("refreshBtn"),
   store: $("store"),
@@ -202,6 +215,22 @@ function showSubmitError(msg) {
 function showSubmitSuccess(msg) {
   setHidden(ui.submitSuccess, !msg);
   setText(ui.submitSuccess, msg || "");
+}
+
+function showHome() {
+  setHidden(ui.homeScreen, false);
+  setHidden(ui.orderApp, true);
+  if (ui.topMenuToggle) ui.topMenuToggle.setAttribute("aria-expanded", "false");
+  setHidden(ui.topMenuList, true);
+  window.scrollTo({ top: 0, behavior: "instant" });
+}
+
+function showOrderApp() {
+  setHidden(ui.homeScreen, true);
+  setHidden(ui.orderApp, false);
+  if (ui.topMenuToggle) ui.topMenuToggle.setAttribute("aria-expanded", "false");
+  setHidden(ui.topMenuList, true);
+  window.scrollTo({ top: 0, behavior: "instant" });
 }
 
 function isFiniteInt(n) {
@@ -910,6 +939,7 @@ async function submitOrder() {
     token: TOKEN || undefined,
     store: state.meta.store,
     placed_by: state.meta.placed_by,
+    timestamp: nowIso(),
     email: state.meta.email,
     requested_date: state.meta.requested_date,
     notes: state.meta.notes,
@@ -970,6 +1000,48 @@ async function submitOrder() {
 // EVENTS
 // =========================
 function wireEvents() {
+  ui.topMenuToggle?.addEventListener("click", () => {
+    if (!ui.topMenuList) return;
+    const isHidden = ui.topMenuList.hidden;
+    setHidden(ui.topMenuList, !isHidden);
+    ui.topMenuToggle?.setAttribute("aria-expanded", String(isHidden));
+  });
+
+  ui.homeOrder?.addEventListener("click", () => {
+    showOrderApp();
+  });
+
+  ui.homeDrivers?.addEventListener("click", () => {
+    alert("Drivers view coming soon.");
+  });
+
+  ui.homeHistory?.addEventListener("click", () => {
+    window.location.href = "history.html";
+  });
+
+  ui.homeReports?.addEventListener("click", () => {
+    alert("Reports view coming soon.");
+  });
+
+  ui.topMenuOrder?.addEventListener("click", () => {
+    showOrderApp();
+    setHidden(ui.topMenuList, true);
+  });
+
+  ui.topMenuDrivers?.addEventListener("click", () => {
+    alert("Drivers view coming soon.");
+    setHidden(ui.topMenuList, true);
+  });
+
+  ui.topMenuHistory?.addEventListener("click", () => {
+    window.location.href = "history.html";
+  });
+
+  ui.topMenuReports?.addEventListener("click", () => {
+    alert("Reports view coming soon.");
+    setHidden(ui.topMenuList, true);
+  });
+
   ui.refreshBtn?.addEventListener("click", () => refreshCatalog());
 
   ui.nextBtn?.addEventListener("click", goNext);
@@ -1042,6 +1114,10 @@ function init() {
   if (STORE_LOCK && ui.store) {
     ui.store.value = STORE_LOCK;
     ui.store.setAttribute("disabled", "disabled");
+  }
+
+  if (VIEW === "order") {
+    showOrderApp();
   }
 
   // If cache is stale or empty, try a background refresh

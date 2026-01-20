@@ -23,6 +23,75 @@ body{
   background: radial-gradient(circle at top, #eef2ff 0%, var(--bg) 45%, #eef6ff 100%);
 }
 
+.home{
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--pad) * 2);
+}
+
+.home__card{
+  width: min(520px, 100%);
+  background: var(--card);
+  border: var(--border);
+  border-radius: calc(var(--radius) + 6px);
+  padding: calc(var(--pad) * 1.6);
+  box-shadow: var(--shadow-soft);
+  text-align: center;
+}
+
+.home__title{
+  font-size: clamp(34px, 6vw, 46px);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  margin-bottom: 24px;
+  text-transform: uppercase;
+}
+
+.home__menu{
+  display: grid;
+  gap: 12px;
+}
+
+.home__menu .btn{
+  width: 100%;
+}
+
+.menu{
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(79, 70, 229, 0.18);
+  background: rgba(79, 70, 229, 0.06);
+}
+
+.menu--dropdown{
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  min-width: 200px;
+  background: #ffffff;
+  box-shadow: var(--shadow-soft);
+  z-index: 10;
+}
+
+.menu__item{
+  border: none;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #ffffff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow-subtle);
+}
+
+.menu__item:hover{
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.12);
+}
+
 .topbar{
   padding: calc(var(--pad) * 1.2);
   background: linear-gradient(135deg, #ffffff 0%, #f1f5ff 100%);
@@ -37,10 +106,52 @@ body{
   align-items: center;
 }
 
+.topbar__right{
+  display:flex;
+  gap: var(--gap);
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .topbar__actions{
   display:flex;
   gap: 10px;
   align-items: center;
+}
+
+.topbar__menu{
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.icon-button{
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(79, 70, 229, 0.3);
+  background: #fff;
+  color: var(--primary);
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-subtle);
+  transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.icon-button:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.12);
+  border-color: rgba(79, 70, 229, 0.6);
+}
+
+.icon-button:active{
+  transform: translateY(0);
+  box-shadow: 0 6px 12px rgba(15, 23, 42, 0.14);
 }
 
 .title{ font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
