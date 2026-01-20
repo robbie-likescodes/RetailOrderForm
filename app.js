@@ -101,6 +101,7 @@ const ui = {
 
   review: $("review"),
   reportsPanel: $("reports"),
+  orderPanel: $("orderPanel"),
 
   catalog: $("catalog"),
   items: $("items"),
@@ -1259,11 +1260,12 @@ function wireEvents() {
   });
 
   ui.homeOrder?.addEventListener("click", () => {
+    setActiveTab("order");
     showOrderApp();
   });
 
   ui.homeDrivers?.addEventListener("click", () => {
-    alert("Drivers view coming soon.");
+    window.location.href = "delivery.html";
   });
 
   ui.homeHistory?.addEventListener("click", () => {
@@ -1271,16 +1273,18 @@ function wireEvents() {
   });
 
   ui.homeReports?.addEventListener("click", () => {
-    alert("Reports view coming soon.");
+    showOrderApp();
+    setActiveTab("reports");
   });
 
   ui.topMenuOrder?.addEventListener("click", () => {
+    setActiveTab("order");
     showOrderApp();
     setHidden(ui.topMenuList, true);
   });
 
   ui.topMenuDrivers?.addEventListener("click", () => {
-    alert("Drivers view coming soon.");
+    window.location.href = "delivery.html";
     setHidden(ui.topMenuList, true);
   });
 
@@ -1289,7 +1293,8 @@ function wireEvents() {
   });
 
   ui.topMenuReports?.addEventListener("click", () => {
-    alert("Reports view coming soon.");
+    showOrderApp();
+    setActiveTab("reports");
     setHidden(ui.topMenuList, true);
   });
 
@@ -1379,7 +1384,9 @@ function init() {
   buildSteps();
   wireEvents();
   updateNetStatus();
+  setActiveTab("order");
   showCatalog();
+  showHome();
 
   // If store is locked by URL param, keep it locked
   if (STORE_LOCK && ui.store) {
@@ -1389,6 +1396,10 @@ function init() {
 
   if (VIEW === "order") {
     showOrderApp();
+  }
+  if (VIEW === "reports") {
+    showOrderApp();
+    setActiveTab("reports");
   }
 
   // If cache is stale or empty, try a background refresh
