@@ -16,6 +16,12 @@ const ui = {
   status: $("historyStatus"),
   error: $("historyError"),
   content: $("historyContent"),
+  menuToggle: $("historyMenuToggle"),
+  menuList: $("historyMenuList"),
+  menuOrder: $("historyMenuOrder"),
+  menuDrivers: $("historyMenuDrivers"),
+  menuHistory: $("historyMenuHistory"),
+  menuReports: $("historyMenuReports"),
 };
 
 const state = {
@@ -234,6 +240,26 @@ async function refreshHistory() {
 
 function init() {
   ui.refreshBtn?.addEventListener("click", refreshHistory);
+  ui.menuToggle?.addEventListener("click", () => {
+    if (!ui.menuList) return;
+    const isHidden = ui.menuList.hidden;
+    setHidden(ui.menuList, !isHidden);
+    ui.menuToggle?.setAttribute("aria-expanded", String(isHidden));
+  });
+  ui.menuOrder?.addEventListener("click", () => {
+    window.location.href = "index.html?view=order";
+  });
+  ui.menuDrivers?.addEventListener("click", () => {
+    alert("Drivers view coming soon.");
+    setHidden(ui.menuList, true);
+  });
+  ui.menuHistory?.addEventListener("click", () => {
+    setHidden(ui.menuList, true);
+  });
+  ui.menuReports?.addEventListener("click", () => {
+    alert("Reports view coming soon.");
+    setHidden(ui.menuList, true);
+  });
   refreshHistory();
 }
 
