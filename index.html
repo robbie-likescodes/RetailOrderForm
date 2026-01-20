@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Retail Order Portal</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__row">
+      <div>
+        <div class="title">Retail Order</div>
+        <div class="subtitle" id="lastUpdated">Catalog: not loaded</div>
+      </div>
+      <button class="btn btn--ghost" id="refreshBtn" type="button">Refresh</button>
+    </div>
+
+    <div class="meta">
+      <label class="field">
+        <span>Store</span>
+        <input id="store" placeholder="Boniface / Huffman / ..." autocomplete="off" />
+      </label>
+
+      <div class="meta__row">
+        <label class="field">
+          <span>Requested date</span>
+          <input id="requestedDate" type="date" />
+        </label>
+
+        <label class="field">
+          <span>Delivery method</span>
+          <select id="deliveryMethod">
+            <option value="Delivery">Delivery</option>
+            <option value="Pickup">Pickup</option>
+          </select>
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Placed by</span>
+        <input id="placedBy" placeholder="Name" autocomplete="name" />
+      </label>
+
+      <div class="meta__row">
+        <label class="field">
+          <span>Phone</span>
+          <input id="phone" placeholder="907-..." inputmode="tel" autocomplete="tel" />
+        </label>
+
+        <label class="field">
+          <span>Email</span>
+          <input id="email" placeholder="optional" inputmode="email" autocomplete="email" />
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Notes</span>
+        <textarea id="notes" rows="2" placeholder="Anything the office should know"></textarea>
+      </label>
+    </div>
+  </header>
+
+  <main class="container">
+    <section id="wizard" class="card">
+      <div class="pill" id="pillCategory">—</div>
+      <h1 class="productName" id="productName">Load products to begin</h1>
+      <div class="productMeta" id="productMeta"></div>
+
+      <label class="field">
+        <span>Quantity (leave blank to skip)</span>
+        <input id="qtyInput" inputmode="numeric" pattern="[0-9]*" placeholder="" />
+      </label>
+
+      <div class="progress">
+        <div id="progressText">—</div>
+        <div id="selectedText">Selected: 0</div>
+      </div>
+
+      <div class="actions">
+        <button class="btn" id="backBtn" type="button">Back</button>
+        <button class="btn btn--primary" id="nextBtn" type="button">Next</button>
+      </div>
+
+      <button class="btn btn--full" id="reviewBtn" type="button">Review & Submit</button>
+      <div class="error" id="errorBox" hidden></div>
+    </section>
+
+    <section id="review" class="card" hidden>
+      <h2>Review</h2>
+      <div id="reviewList" class="reviewList"></div>
+      <div class="actions">
+        <button class="btn" id="editBtn" type="button">Back to editing</button>
+        <button class="btn btn--primary" id="submitBtn" type="button">Submit Order</button>
+      </div>
+      <div class="error" id="submitError" hidden></div>
+      <div class="success" id="submitSuccess" hidden></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
