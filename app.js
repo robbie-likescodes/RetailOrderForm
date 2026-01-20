@@ -155,6 +155,23 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 
+function normalizeKey(key) {
+  return String(key || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function normalizeRowKeys(row) {
+  if (!row || typeof row !== "object") return {};
+  return Object.keys(row).reduce((acc, key) => {
+    const normalized = normalizeKey(key);
+    if (normalized) acc[normalized] = row[key];
+    return acc;
+  }, {});
+}
+
 function setText(el, txt) {
   if (!el) return;
   el.textContent = txt;
@@ -268,13 +285,16 @@ function normalizeCategoryRows(rows) {
   // expected: {category, display_name, sort, active}
   const out = [];
   for (const r of rows || []) {
-    const category = String(r.category || "").trim();
-    const active = String(r.active ?? "TRUE").toUpperCase() === "TRUE";
+    const normalized = normalizeRowKeys(r);
+    const category = String(normalized.category || r.category || "").trim();
+    const active = String(normalized.active ?? r.active ?? "TRUE").toUpperCase() === "TRUE";
     if (!category || !active) continue;
     out.push({
       category,
-      display_name: String(r.display_name || category).trim(),
-      sort: Number(r.sort ?? 9999),
+      display_name: String(
+        normalized.display_name ?? r.display_name ?? category
+      ).trim(),
+      sort: Number(normalized.sort ?? r.sort ?? 9999),
     });
   }
   out.sort((a, b) => a.sort - b.sort);
@@ -285,20 +305,21 @@ function normalizeProductRows(rows) {
   // expected: item_no, sku, name, category, unit, pack_size, sort, active
   const out = [];
   for (const r of rows || []) {
-    const sku = String(r.sku || "").trim();
-    const name = String(r.name || "").trim();
-    const category = String(r.category || "").trim();
-    const active = String(r.active ?? "TRUE").toUpperCase() === "TRUE";
+    const normalized = normalizeRowKeys(r);
+    const sku = String(normalized.sku || r.sku || "").trim();
+    const name = String(normalized.name || r.name || "").trim();
+    const category = String(normalized.category || r.category || "").trim();
+    const active = String(normalized.active ?? r.active ?? "TRUE").toUpperCase() === "TRUE";
     if (!sku || !name || !category || !active) continue;
 
     out.push({
-      item_no: String(r.item_no || "").trim(),
+      item_no: String(normalized.item_no || r.item_no || "").trim(),
       sku,
       name,
       category,
-      unit: String(r.unit || "").trim(),
-      pack_size: String(r.pack_size || "").trim(),
-      sort: Number(r.sort ?? 9999),
+      unit: String(normalized.unit || r.unit || "").trim(),
+      pack_size: String(normalized.pack_size || r.pack_size || "").trim(),
+      sort: Number(normalized.sort ?? r.sort ?? 9999),
     });
   }
   return out;
