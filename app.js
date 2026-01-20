@@ -55,6 +55,7 @@ const CONFIG = {
 const urlParams = new URLSearchParams(window.location.search);
 const TOKEN = urlParams.get("token") || "";                 // optional shared key / store token
 const STORE_LOCK = urlParams.get("store") || "";            // optional store prefill/lock
+const VIEW = (urlParams.get("view") || "").toLowerCase();
 const DEBUG = (urlParams.get("debug") || "").toLowerCase() === "true";
 
 // =========================
@@ -77,12 +78,16 @@ const $ = (id) => document.getElementById(id);
 const ui = {
   homeScreen: $("homeScreen"),
   orderApp: $("orderApp"),
-  menuToggle: $("menuToggle"),
-  menuList: $("menuList"),
-  menuOrder: $("menuOrder"),
-  menuDrivers: $("menuDrivers"),
-  menuHistory: $("menuHistory"),
-  menuReports: $("menuReports"),
+  homeOrder: $("homeOrder"),
+  homeDrivers: $("homeDrivers"),
+  homeHistory: $("homeHistory"),
+  homeReports: $("homeReports"),
+  topMenuToggle: $("topMenuToggle"),
+  topMenuList: $("topMenuList"),
+  topMenuOrder: $("topMenuOrder"),
+  topMenuDrivers: $("topMenuDrivers"),
+  topMenuHistory: $("topMenuHistory"),
+  topMenuReports: $("topMenuReports"),
   lastUpdated: $("lastUpdated"),
   refreshBtn: $("refreshBtn"),
   store: $("store"),
@@ -212,16 +217,16 @@ function showSubmitSuccess(msg) {
 function showHome() {
   setHidden(ui.homeScreen, false);
   setHidden(ui.orderApp, true);
-  if (ui.menuToggle) ui.menuToggle.setAttribute("aria-expanded", "false");
-  setHidden(ui.menuList, true);
+  if (ui.topMenuToggle) ui.topMenuToggle.setAttribute("aria-expanded", "false");
+  setHidden(ui.topMenuList, true);
   window.scrollTo({ top: 0, behavior: "instant" });
 }
 
 function showOrderApp() {
   setHidden(ui.homeScreen, true);
   setHidden(ui.orderApp, false);
-  if (ui.menuToggle) ui.menuToggle.setAttribute("aria-expanded", "false");
-  setHidden(ui.menuList, true);
+  if (ui.topMenuToggle) ui.topMenuToggle.setAttribute("aria-expanded", "false");
+  setHidden(ui.topMenuList, true);
   window.scrollTo({ top: 0, behavior: "instant" });
 }
 
@@ -916,27 +921,46 @@ async function submitOrder() {
 // EVENTS
 // =========================
 function wireEvents() {
-  ui.menuToggle?.addEventListener("click", () => {
-    if (!ui.menuList) return;
-    const isHidden = ui.menuList.hidden;
-    setHidden(ui.menuList, !isHidden);
-    ui.menuToggle?.setAttribute("aria-expanded", String(isHidden));
+  ui.topMenuToggle?.addEventListener("click", () => {
+    if (!ui.topMenuList) return;
+    const isHidden = ui.topMenuList.hidden;
+    setHidden(ui.topMenuList, !isHidden);
+    ui.topMenuToggle?.setAttribute("aria-expanded", String(isHidden));
   });
 
-  ui.menuOrder?.addEventListener("click", () => {
+  ui.homeOrder?.addEventListener("click", () => {
     showOrderApp();
   });
 
-  ui.menuDrivers?.addEventListener("click", () => {
+  ui.homeDrivers?.addEventListener("click", () => {
     alert("Drivers view coming soon.");
   });
 
-  ui.menuHistory?.addEventListener("click", () => {
+  ui.homeHistory?.addEventListener("click", () => {
     window.location.href = "history.html";
   });
 
-  ui.menuReports?.addEventListener("click", () => {
+  ui.homeReports?.addEventListener("click", () => {
     alert("Reports view coming soon.");
+  });
+
+  ui.topMenuOrder?.addEventListener("click", () => {
+    showOrderApp();
+    setHidden(ui.topMenuList, true);
+  });
+
+  ui.topMenuDrivers?.addEventListener("click", () => {
+    alert("Drivers view coming soon.");
+    setHidden(ui.topMenuList, true);
+  });
+
+  ui.topMenuHistory?.addEventListener("click", () => {
+    window.location.href = "history.html";
+  });
+
+  ui.topMenuReports?.addEventListener("click", () => {
+    alert("Reports view coming soon.");
+    setHidden(ui.topMenuList, true);
   });
 
   ui.refreshBtn?.addEventListener("click", () => refreshCatalog());
@@ -998,6 +1022,10 @@ function init() {
   if (STORE_LOCK && ui.store) {
     ui.store.value = STORE_LOCK;
     ui.store.setAttribute("disabled", "disabled");
+  }
+
+  if (VIEW === "order") {
+    showOrderApp();
   }
 
   // If cache is stale or empty, try a background refresh
