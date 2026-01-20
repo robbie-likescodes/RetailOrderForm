@@ -7,16 +7,14 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="topbar__row">
-      <div>
-        <div class="title">Retail Order</div>
-        <div class="subtitle" id="lastUpdated">Catalog: not loaded</div>
-      </div>
-      <div class="topbar__actions">
-        <button class="btn btn--ghost btn--tab is-active" id="orderTabBtn" type="button">Order</button>
-        <button class="btn btn--ghost btn--tab" id="reportsTabBtn" type="button">Reports</button>
-        <button class="btn btn--ghost" id="refreshBtn" type="button">Refresh Products</button>
+  <section id="homeScreen" class="home">
+    <div class="home__card">
+      <h1 class="home__title">RETAIL ORDERS</h1>
+      <div class="home__menu">
+        <button class="btn btn--primary" id="homeOrder" type="button">Order</button>
+        <button class="btn btn--ghost" id="homeDrivers" type="button">Drivers</button>
+        <button class="btn btn--ghost" id="homeHistory" type="button">History</button>
+        <button class="btn btn--ghost" id="homeReports" type="button">Reports</button>
       </div>
     </div>
   </section>
@@ -25,12 +23,15 @@
     <header class="topbar">
       <div class="topbar__row">
         <div>
-          <div class="title">Retail Order</div>
+          <div class="title">Retail Orders</div>
           <div class="subtitle" id="lastUpdated">Catalog: not loaded</div>
         </div>
         <div class="topbar__right">
           <div class="topbar__actions">
-            <a class="btn btn--ghost" href="history.html">Order History</a>
+            <button class="btn btn--ghost btn--tab is-active" id="orderTabBtn" type="button">Order</button>
+            <button class="btn btn--ghost btn--tab" id="reportsTabBtn" type="button">Reports</button>
+            <a class="btn btn--ghost btn--tab" href="history.html">History</a>
+            <a class="btn btn--ghost btn--tab" href="delivery.html">Drivers</a>
             <button class="btn btn--ghost" id="refreshBtn" type="button">Refresh Products</button>
           </div>
           <div class="topbar__menu">
@@ -69,142 +70,165 @@
           <span>Email</span>
           <input id="email" placeholder="optional" inputmode="email" autocomplete="email" />
         </label>
-
-  <main class="container">
-    <section id="catalog" class="card catalog">
-      <div class="catalog__header">
-        <div>
-          <div class="eyebrow">Start an order</div>
-          <h1 class="catalog__title">Pick a category</h1>
-          <div class="catalog__hint">Tap a category to see the items and enter quantities quickly.</div>
-        </div>
-        <div class="catalog__summary" id="selectedSummary">Selected: 0</div>
       </div>
-      <div id="categoryList" class="categoryGrid"></div>
-    </section>
+    </header>
 
-    <section id="items" class="card items" hidden>
-      <div class="items__header">
-        <button class="btn btn--ghost btn--small" id="backToCategories" type="button">Back</button>
-        <div class="items__headerText">
-          <div class="eyebrow">Category</div>
-          <h2 id="categoryTitle">—</h2>
-          <div class="items__meta" id="categoryMeta"></div>
-        </div>
-        <div class="items__summary" id="itemsSummary">Selected: 0</div>
-      </div>
-      <div id="itemList" class="itemList"></div>
-      <div class="items__footer">
-        <button class="btn btn--primary btn--full" id="reviewBtn" type="button">Review & Submit</button>
-      </div>
-      <div class="error" id="errorBox" hidden></div>
-    </section>
+    <main class="container">
+      <div id="orderPanel" class="tabPanel">
+        <section id="catalog" class="card catalog">
+          <div class="catalog__header">
+            <div>
+              <div class="eyebrow">Start an order</div>
+              <h1 class="catalog__title">Pick a category</h1>
+              <div class="catalog__hint">Tap a category to see the items and enter quantities quickly.</div>
+            </div>
+            <div class="catalog__summary" id="selectedSummary">Selected: 0</div>
+          </div>
+          <div id="categoryList" class="categoryGrid"></div>
+        </section>
 
-    <section id="reports" class="card tabPanel" hidden>
-      <div class="reports__header">
-        <div>
-          <h2>Reports</h2>
-          <p class="muted">Compare product usage across stores and timeframes.</p>
-        </div>
-        <div class="reports__summary">
-          <div class="reports__metric">
-            <span>Orders in history</span>
-            <strong id="reportHistoryCount">0</strong>
+        <section id="items" class="card items" hidden>
+          <div class="items__header">
+            <button class="btn btn--ghost btn--small" id="backToCategories" type="button">Back</button>
+            <div class="items__headerText">
+              <div class="eyebrow">Category</div>
+              <h2 id="categoryTitle">—</h2>
+              <div class="items__meta" id="categoryMeta"></div>
+            </div>
+            <div class="items__summary" id="itemsSummary">Selected: 0</div>
+          </div>
+          <div id="itemList" class="itemList"></div>
+          <div class="items__footer">
+            <button class="btn btn--primary btn--full" id="reviewBtn" type="button">Review &amp; Submit</button>
+          </div>
+          <div class="error" id="errorBox" hidden></div>
+        </section>
+
+        <section id="review" class="card" hidden>
+          <div class="card__header">
+            <h2>Review your order</h2>
+            <p class="muted">Confirm quantities and add notes before submitting.</p>
+          </div>
+          <div id="reviewList" class="reviewList"></div>
+          <label class="field">
+            <span>Notes</span>
+            <textarea id="notes" rows="3" placeholder="Optional notes"></textarea>
+          </label>
+          <div class="items__footer">
+            <button class="btn btn--ghost" id="editBtn" type="button">Edit Order</button>
+            <button class="btn btn--primary btn--full" id="submitBtn" type="button">Submit Order</button>
+          </div>
+          <div class="error" id="submitError" hidden></div>
+          <div class="success" id="submitSuccess" hidden></div>
+        </section>
+      </div>
+
+      <section id="reports" class="card tabPanel" hidden>
+        <div class="reports__header">
+          <div>
+            <h2>Reports</h2>
+            <p class="muted">Compare product usage across stores and timeframes.</p>
+          </div>
+          <div class="reports__summary">
+            <div class="reports__metric">
+              <span>Orders in history</span>
+              <strong id="reportHistoryCount">0</strong>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="reports__section">
-        <h3>Product totals by store</h3>
-        <div class="reports__filters">
-          <label class="field">
-            <span>Product</span>
-            <select id="reportProduct">
-              <option value="">Select a product</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Store</span>
-            <select id="reportStore">
-              <option value="all">All stores</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Day</span>
-            <input id="reportDay" type="date" />
-          </label>
-          <label class="field">
-            <span>Month</span>
-            <select id="reportMonth">
-              <option value="">All months</option>
-              <option value="1">January</option>
-              <option value="2">February</option>
-              <option value="3">March</option>
-              <option value="4">April</option>
-              <option value="5">May</option>
-              <option value="6">June</option>
-              <option value="7">July</option>
-              <option value="8">August</option>
-              <option value="9">September</option>
-              <option value="10">October</option>
-              <option value="11">November</option>
-              <option value="12">December</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Year</span>
-            <select id="reportYear">
-              <option value="">All years</option>
-            </select>
-          </label>
+        <div class="reports__section">
+          <h3>Product totals by store</h3>
+          <div class="reports__filters">
+            <label class="field">
+              <span>Product</span>
+              <select id="reportProduct">
+                <option value="">Select a product</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Store</span>
+              <select id="reportStore">
+                <option value="all">All stores</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Day</span>
+              <input id="reportDay" type="date" />
+            </label>
+            <label class="field">
+              <span>Month</span>
+              <select id="reportMonth">
+                <option value="">All months</option>
+                <option value="1">January</option>
+                <option value="2">February</option>
+                <option value="3">March</option>
+                <option value="4">April</option>
+                <option value="5">May</option>
+                <option value="6">June</option>
+                <option value="7">July</option>
+                <option value="8">August</option>
+                <option value="9">September</option>
+                <option value="10">October</option>
+                <option value="11">November</option>
+                <option value="12">December</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Year</span>
+              <select id="reportYear">
+                <option value="">All years</option>
+              </select>
+            </label>
+          </div>
+          <div class="tableWrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Store</th>
+                  <th>Qty</th>
+                </tr>
+              </thead>
+              <tbody id="reportStoreBody"></tbody>
+            </table>
+            <div class="empty" id="reportStoreEmpty" hidden>Select a product and timeframe to see totals.</div>
+          </div>
         </div>
-        <div class="tableWrap">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Store</th>
-                <th>Qty</th>
-              </tr>
-            </thead>
-            <tbody id="reportStoreBody"></tbody>
-          </table>
-          <div class="empty" id="reportStoreEmpty" hidden>Select a product and timeframe to see totals.</div>
-        </div>
-      </div>
 
-      <div class="reports__section">
-        <h3>Store comparison over time</h3>
-        <div class="reports__filters reports__filters--compact">
-          <label class="field">
-            <span>Product</span>
-            <select id="compareProduct">
-              <option value="">Select a product</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Start date</span>
-            <input id="compareStart" type="date" />
-          </label>
-          <label class="field">
-            <span>End date</span>
-            <input id="compareEnd" type="date" />
-          </label>
+        <div class="reports__section">
+          <h3>Store comparison over time</h3>
+          <div class="reports__filters reports__filters--compact">
+            <label class="field">
+              <span>Product</span>
+              <select id="compareProduct">
+                <option value="">Select a product</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Start date</span>
+              <input id="compareStart" type="date" />
+            </label>
+            <label class="field">
+              <span>End date</span>
+              <input id="compareEnd" type="date" />
+            </label>
+          </div>
+          <div class="tableWrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Store</th>
+                  <th>Qty</th>
+                </tr>
+              </thead>
+              <tbody id="compareBody"></tbody>
+            </table>
+            <div class="empty" id="compareEmpty" hidden>Choose a product and date range to compare stores.</div>
+          </div>
         </div>
-        <div class="tableWrap">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Store</th>
-                <th>Qty</th>
-              </tr>
-            </thead>
-            <tbody id="compareBody"></tbody>
-          </table>
-          <div class="empty" id="compareEmpty" hidden>Choose a product and date range to compare stores.</div>
-        </div>
-      </div>
-    </section>
-  </main>
+      </section>
+    </main>
+  </div>
 
   <script src="app.js"></script>
 </body>
