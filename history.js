@@ -16,12 +16,6 @@ const ui = {
   status: $("historyStatus"),
   error: $("historyError"),
   content: $("historyContent"),
-  menuToggle: $("historyMenuToggle"),
-  menuList: $("historyMenuList"),
-  menuOrder: $("historyMenuOrder"),
-  menuDrivers: $("historyMenuDrivers"),
-  menuHistory: $("historyMenuHistory"),
-  menuReports: $("historyMenuReports"),
 };
 
 const state = {
@@ -100,7 +94,28 @@ function sortOrdersByDate(orders) {
   return [...orders].sort((a, b) => {
     const da = parseDate(a.created_at)?.getTime() || 0;
     const db = parseDate(b.created_at)?.getTime() || 0;
-    return db - da;
+    if (db !== da) return db - da;
+    return String(a.order_id || "").localeCompare(String(b.order_id || ""), undefined, {
+      sensitivity: "base",
+    });
+  });
+}
+
+function sortStores(stores) {
+  return [...stores].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+}
+
+function sortItems(items) {
+  return [...items].sort((a, b) => {
+    const nameCompare = String(a.name || a.sku || "").localeCompare(
+      String(b.name || b.sku || ""),
+      undefined,
+      { sensitivity: "base" }
+    );
+    if (nameCompare !== 0) return nameCompare;
+    return String(a.sku || "").localeCompare(String(b.sku || ""), undefined, {
+      sensitivity: "base",
+    });
   });
 }
 
@@ -121,7 +136,7 @@ function renderHistory() {
     stores.get(store).push(order);
   }
 
-  const sortedStores = [...stores.keys()].sort((a, b) => a.localeCompare(b));
+  const sortedStores = sortStores(stores.keys());
 
   sortedStores.forEach((storeName) => {
     const storeOrders = sortOrdersByDate(stores.get(storeName));
@@ -169,7 +184,7 @@ function renderHistory() {
         </div>
       `;
 
-      const items = itemsByOrder.get(orderId) || [];
+      const items = sortItems(itemsByOrder.get(orderId) || []);
       const itemsWrap = document.createElement("div");
       itemsWrap.className = "historyItems";
 
@@ -240,26 +255,6 @@ async function refreshHistory() {
 
 function init() {
   ui.refreshBtn?.addEventListener("click", refreshHistory);
-  ui.menuToggle?.addEventListener("click", () => {
-    if (!ui.menuList) return;
-    const isHidden = ui.menuList.hidden;
-    setHidden(ui.menuList, !isHidden);
-    ui.menuToggle?.setAttribute("aria-expanded", String(isHidden));
-  });
-  ui.menuOrder?.addEventListener("click", () => {
-    window.location.href = "index.html?view=order";
-  });
-  ui.menuDrivers?.addEventListener("click", () => {
-    alert("Drivers view coming soon.");
-    setHidden(ui.menuList, true);
-  });
-  ui.menuHistory?.addEventListener("click", () => {
-    setHidden(ui.menuList, true);
-  });
-  ui.menuReports?.addEventListener("click", () => {
-    alert("Reports view coming soon.");
-    setHidden(ui.menuList, true);
-  });
   refreshHistory();
 }
 
