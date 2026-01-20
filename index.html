@@ -17,7 +17,7 @@
         <button class="btn btn--ghost" id="homeReports" type="button">Reports</button>
       </div>
       <div class="topbar__actions">
-        <a class="btn btn--ghost" href="history.html">Order History</a>
+        <a class="btn btn--ghost btn--link" id="driversBtn" href="delivery.html">Drivers</a>
         <button class="btn btn--ghost" id="refreshBtn" type="button">Refresh Products</button>
       </div>
     </div>
@@ -78,11 +78,18 @@
     </header>
 
   <main class="container">
-    <section id="orderPanel" class="tabPanel">
-      <section id="wizard" class="card">
-        <div class="pill" id="pillCategory">—</div>
-        <h1 class="productName" id="productName">Load products to begin</h1>
-        <div class="productMeta" id="productMeta"></div>
+    <section id="todayOrdersCard" class="card">
+      <div class="card__header">
+        <h2>Today's Orders</h2>
+        <span class="hint">Green check marks mean orders are ready for delivery.</span>
+      </div>
+      <div id="todayOrdersList" class="stack"></div>
+    </section>
+
+    <section id="wizard" class="card">
+      <div class="pill" id="pillCategory">—</div>
+      <h1 class="productName" id="productName">Load products to begin</h1>
+      <div class="productMeta" id="productMeta"></div>
 
         <label class="field">
           <span>Quantity (leave blank to skip)</span>

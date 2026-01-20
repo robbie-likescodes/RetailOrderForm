@@ -66,6 +66,9 @@ function setItemStatus(orderId, key, status) {
     } else {
       updated.delivery.items[key] = status;
     }
+    if (!isOrderComplete(updated)) {
+      updated.delivery.status = "pending";
+    }
     return updated;
   });
   saveOrders();
@@ -88,6 +91,13 @@ function isOrderComplete(order) {
   });
 }
 
+function syncOrderStatus(order) {
+  if (order.delivery.status === "ready" && !isOrderComplete(order)) {
+    return { ...order, delivery: { ...order.delivery, status: "pending" } };
+  }
+  return order;
+}
+
 function renderOrders() {
   if (!ui.deliveryOrders) return;
   const today = todayDateValue();
@@ -98,8 +108,21 @@ function renderOrders() {
 
   ui.deliveryOrders.innerHTML = "";
 
-  const todaysOrders = orders
+  const normalizedOrders = orders
     .map(normalizeOrder)
+    .map(syncOrderStatus);
+
+  const statusChanged = normalizedOrders.some((order, index) => {
+    const prev = orders[index];
+    return prev?.delivery?.status !== order.delivery.status;
+  });
+
+  if (statusChanged) {
+    orders = normalizedOrders;
+    saveOrders();
+  }
+
+  const todaysOrders = normalizedOrders
     .filter((order) => order.requested_date === today);
 
   if (todaysOrders.length === 0) {

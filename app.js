@@ -167,17 +167,7 @@ const state = {
   lastCatalogIso: "", // when refreshed
   lastCacheIso: "",   // when cached
   categoryIndex: new Map(), // category -> {start, end}
-  activeTab: "order",
-  reports: {
-    product: "",
-    store: "all",
-    day: "",
-    month: "",
-    year: "",
-    compareProduct: "",
-    compareStart: "",
-    compareEnd: "",
-  },
+  orders: [],
 };
 
 // =========================
@@ -1496,6 +1486,17 @@ function wireEvents() {
     }
   });
 
+  // Online/offline indicator
+  window.addEventListener("online", updateNetStatus);
+  window.addEventListener("offline", updateNetStatus);
+
+  window.addEventListener("storage", (event) => {
+    if (event.key === CACHE.ORDERS) {
+      loadOrders();
+      renderTodayOrders();
+    }
+  });
+
   window.addEventListener("focus", () => {
     loadOrders();
     renderTodayOrders();
@@ -1512,11 +1513,7 @@ function init() {
   wireEvents();
   updateNetStatus();
   renderWizard();
-  updateReportOptions();
-  setActiveTab("order");
-  if (state.ordersUpdatedAt) {
-    setReportStatus(`History: ${new Date(state.ordersUpdatedAt).toLocaleString()}`);
-  }
+  renderTodayOrders();
 
   // If store is locked by URL param, keep it locked
   if (STORE_LOCK && ui.store) {
