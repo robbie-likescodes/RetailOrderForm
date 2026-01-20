@@ -31,15 +31,6 @@ function doPost(e) {
       ));
     }
 
-    if (normalized.items.length === 0) {
-      return jsonResponse(buildError_(
-        "Order has no items with quantities.",
-        "NO_VALID_ITEMS",
-        null,
-        requestId
-      ));
-    }
-
     const totals = normalized.items.reduce(
       (acc, item) => {
         acc.itemCount += 1;
@@ -50,64 +41,19 @@ function doPost(e) {
     );
 
     const ordersSheet = ensureSheet_(CONFIG.sheets.orders, [
-      "order_id",
-      "created_at",
+      "date",
       "store",
       "placed_by",
-      "phone",
-      "email",
-      "requested_date",
-      "delivery_method",
-      "notes",
-      "item_count",
-      "total_qty",
-      "token",
-      "user_agent",
     ]);
 
+    const itemCells = normalized.items.flatMap(item => ([item.name, item.qty]));
+
     ordersSheet.appendRow([
-      orderId,
       createdAt,
       payload.store,
       payload.placed_by,
-      payload.phone || "",
-      payload.email || "",
-      payload.requested_date,
-      payload.delivery_method || "",
-      payload.notes || "",
-      totals.itemCount,
-      totals.totalQty,
-      payload.token || "",
-      (payload.client && payload.client.userAgent) || "",
+      ...itemCells,
     ]);
-
-    const itemsSheet = ensureSheet_(CONFIG.sheets.orderItems, [
-      "order_id",
-      "item_no",
-      "sku",
-      "name",
-      "category",
-      "unit",
-      "pack_size",
-      "qty",
-    ]);
-
-    const itemRows = normalized.items.map(item => ([
-      orderId,
-      item.item_no,
-      item.sku,
-      item.name,
-      item.category,
-      item.unit,
-      item.pack_size,
-      item.qty,
-    ]));
-
-    if (itemRows.length) {
-      itemsSheet
-        .getRange(itemsSheet.getLastRow() + 1, 1, itemRows.length, itemRows[0].length)
-        .setValues(itemRows);
-    }
 
     return jsonResponse({
       ok: true,
@@ -153,12 +99,6 @@ function validateOrder_(payload) {
   }
   if (!payload.placed_by) {
     return { message: "Placed by is required.", code: "MISSING_PLACED_BY" };
-  }
-  if (!payload.requested_date) {
-    return { message: "Requested date is required.", code: "MISSING_REQUESTED_DATE" };
-  }
-  if (!Array.isArray(payload.items) || payload.items.length === 0) {
-    return { message: "Order must include at least one item.", code: "MISSING_ITEMS" };
   }
   return null;
 }
