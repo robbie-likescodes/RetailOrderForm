@@ -19,36 +19,56 @@
         <button class="btn btn--ghost" id="refreshBtn" type="button">Refresh Products</button>
       </div>
     </div>
+  </section>
 
-    <div class="meta">
-      <label class="field">
-        <span>Store</span>
-        <input id="store" placeholder="Boniface / Huffman / ..." autocomplete="off" required />
-      </label>
-
-      <div class="meta__row">
-        <label class="field">
-          <span>Requested date</span>
-          <input id="requestedDate" type="date" required />
-        </label>
+  <div id="orderApp" hidden>
+    <header class="topbar">
+      <div class="topbar__row">
+        <div>
+          <div class="title">Retail Order</div>
+          <div class="subtitle" id="lastUpdated">Catalog: not loaded</div>
+        </div>
+        <div class="topbar__right">
+          <div class="topbar__actions">
+            <a class="btn btn--ghost" href="history.html">Order History</a>
+            <button class="btn btn--ghost" id="refreshBtn" type="button">Refresh Products</button>
+          </div>
+          <div class="topbar__menu">
+            <button class="icon-button" id="topMenuToggle" type="button" aria-expanded="false" aria-controls="topMenuList" aria-label="Open menu">
+              ☰
+            </button>
+            <div class="menu menu--dropdown" id="topMenuList" hidden>
+              <button class="menu__item" id="topMenuOrder" type="button">Order Products</button>
+              <button class="menu__item" id="topMenuDrivers" type="button">Drivers</button>
+              <button class="menu__item" id="topMenuHistory" type="button">History</button>
+              <button class="menu__item" id="topMenuReports" type="button">Reports</button>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <label class="field">
-        <span>Placed by</span>
-        <input id="placedBy" placeholder="Name" autocomplete="name" required />
-      </label>
+      <div class="meta">
+        <label class="field">
+          <span>Store</span>
+          <input id="store" placeholder="Boniface / Huffman / ..." autocomplete="off" required />
+        </label>
 
-      <label class="field">
-        <span>Email</span>
-        <input id="email" placeholder="optional" inputmode="email" autocomplete="email" />
-      </label>
+        <div class="meta__row">
+          <label class="field">
+            <span>Requested date</span>
+            <input id="requestedDate" type="date" required />
+          </label>
+        </div>
 
-      <label class="field">
-        <span>Notes</span>
-        <textarea id="notes" rows="2" placeholder="Anything the office should know"></textarea>
-      </label>
-    </div>
-  </header>
+        <label class="field">
+          <span>Placed by</span>
+          <input id="placedBy" placeholder="Name" autocomplete="name" required />
+        </label>
+
+        <label class="field">
+          <span>Email</span>
+          <input id="email" placeholder="optional" inputmode="email" autocomplete="email" />
+        </label>
 
   <main class="container">
     <section id="orderPanel" class="tabPanel">
