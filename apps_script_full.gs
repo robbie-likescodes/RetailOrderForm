@@ -9,7 +9,7 @@
  * Sheets expected:
  *  - Categories: category | sort | active | display_name
  *  - Products: item_no | sku | name | category | unit | pack_size | active | sort
- *  - Orders: date | store | placed_by | Product 1 | Qty 1 | Product 2 | Qty 2 | ...
+ *  - Orders: order_id | timestamp | store | placed_by | phone | email | notes | items_json | items_summary | status | Product 1 | Qty 1 | ...
  */
 
 const CONFIG = {
@@ -102,9 +102,11 @@ function doGet(e) {
           { itemCount: 0, totalQty: 0 }
         );
 
+        const fallbackOrderId = `row_${index + 2}`;
+
         return {
-          order_id: `row_${index + 2}`,
-          created_at: String(row.date || "").trim(),
+          order_id: String(row.order_id || fallbackOrderId).trim(),
+          created_at: String(row.timestamp || "").trim(),
           store: String(row.store || "").trim(),
           placed_by: String(row.placed_by || "").trim(),
           email: String(row.email || "").trim(),
@@ -116,7 +118,7 @@ function doGet(e) {
 
       const items = rawOrders.flatMap((row, index) => (
         extractOrderItems_(row).map(item => ({
-          order_id: `row_${index + 2}`,
+          order_id: String(row.order_id || `row_${index + 2}`).trim(),
           name: item.name,
           qty: item.qty,
         }))
@@ -167,20 +169,19 @@ function doPost(e) {
 
     const orderId = Utilities.getUuid();
     const createdAt = new Date().toISOString();
+    const maxProducts = 100;
 
-    const items = payload.items
-      .map(item => ({
-        item_no: String(item.item_no || "").trim(),
-        sku: String(item.sku || "").trim(),
-        name: String(item.name || "").trim(),
-        category: String(item.category || "").trim(),
-        unit: String(item.unit || "").trim(),
-        pack_size: String(item.pack_size || "").trim(),
-        qty: Number(item.qty || 0),
-      }))
-      .filter(item => item.sku && item.name && item.qty > 0);
+    const normalized = normalizeItems_(payload.items);
+    if (normalized.rejected.length) {
+      return jsonResponse({
+        ok: false,
+        error: "Order has invalid items.",
+        details: { rejected_items: normalized.rejected },
+        updated_at: createdAt,
+      });
+    }
 
-    const totals = items.reduce(
+    const totals = normalized.items.reduce(
       (acc, item) => {
         acc.itemCount += 1;
         acc.totalQty += item.qty;
@@ -193,25 +194,31 @@ function doPost(e) {
     lock.waitLock(10000);
 
     try {
-      const ordersSheet = ensureSheet_(CONFIG.SHEETS.ORDERS, [
-        "date",
-        "store",
-        "placed_by",
-      ]);
+      const ordersSheet = ensureSheet_(
+        CONFIG.SHEETS.ORDERS,
+        buildOrderHeaders_(maxProducts)
+      );
 
-      const itemCells = items.flatMap(item => ([item.name, item.qty]));
+      const itemCells = buildProductCells_(normalized.items, maxProducts);
 
       ordersSheet.appendRow([
-        createdAt,
+        orderId,
+        payload.timestamp,
         payload.store,
         payload.placed_by,
+        payload.phone || "",
+        payload.email || "",
+        payload.notes || "",
+        JSON.stringify(normalized.items),
+        buildItemsSummary_(normalized.items),
+        payload.status || "",
         ...itemCells,
       ]);
     } finally {
       lock.releaseLock();
     }
 
-    maybeSendEmail_(orderId, payload, items, totals);
+    maybeSendEmail_(orderId, payload, normalized.items, totals);
 
     return jsonResponse({
       ok: true,
@@ -255,6 +262,7 @@ function validateToken_(payload) {
 function validateOrder_(payload) {
   if (!payload) return "Missing order payload.";
   if (!payload.store) return "Store is required.";
+  if (!payload.timestamp) return "Timestamp is required.";
   if (!payload.placed_by) return "Placed by is required.";
   return "";
 }
@@ -294,6 +302,72 @@ function isRowActive_(row) {
   const normalized = String(raw || "").trim().toLowerCase();
   if (!normalized) return false;
   return ["true", "yes", "y", "1"].includes(normalized);
+}
+
+function normalizeItems_(items) {
+  const normalizedItems = [];
+  const rejectedItems = [];
+
+  (items || []).forEach((item, index) => {
+    const normalized = {
+      name: String(item.name || "").trim(),
+      qty: Number(item.qty || 0),
+    };
+
+    const reasons = [];
+    if (!normalized.name) reasons.push("Missing name.");
+    if (!Number.isFinite(normalized.qty) || normalized.qty <= 0) {
+      reasons.push("Quantity must be greater than zero.");
+    }
+
+    if (reasons.length) {
+      rejectedItems.push({
+        index,
+        reasons,
+        item: normalized,
+      });
+    } else {
+      normalizedItems.push(normalized);
+    }
+  });
+
+  return { items: normalizedItems, rejected: rejectedItems };
+}
+
+function buildOrderHeaders_(maxProducts) {
+  const headers = [
+    "order_id",
+    "timestamp",
+    "store",
+    "placed_by",
+    "phone",
+    "email",
+    "notes",
+    "items_json",
+    "items_summary",
+    "status",
+  ];
+
+  for (let i = 1; i <= maxProducts; i += 1) {
+    headers.push(`Product ${i}`, `Qty ${i}`);
+  }
+
+  return headers;
+}
+
+function buildProductCells_(items, maxProducts) {
+  const cells = new Array(maxProducts * 2).fill("");
+  items.slice(0, maxProducts).forEach((item, index) => {
+    cells[index * 2] = item.name;
+    cells[index * 2 + 1] = item.qty;
+  });
+  return cells;
+}
+
+function buildItemsSummary_(items) {
+  return items
+    .map(item => `${item.name} x${item.qty}`)
+    .join(", ");
 }
 
 function ensureSheet_(name, headers) {
