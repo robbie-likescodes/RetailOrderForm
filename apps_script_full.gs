@@ -10,7 +10,7 @@
  *  - Categories: category | sort | active | display_name
  *  - Products: item_no | sku | name | category | unit | pack_size | active | sort
  *  - Orders: order_id | created_at | store | placed_by | phone | email | requested_date |
- *            delivery_method | notes | item_count | total_qty | token | user_agent
+ *            delivery_method (optional) | notes | item_count | total_qty | token | user_agent
  *  - OrderItems: order_id | item_no | sku | name | category | unit | pack_size | qty
  */
 
@@ -270,7 +270,6 @@ function validateOrder_(payload) {
   if (!payload.store) return "Store is required.";
   if (!payload.placed_by) return "Placed by is required.";
   if (!payload.requested_date) return "Requested date is required.";
-  if (!payload.delivery_method) return "Delivery method is required.";
   if (!Array.isArray(payload.items) || payload.items.length === 0) {
     return "Order must include at least one item.";
   }
