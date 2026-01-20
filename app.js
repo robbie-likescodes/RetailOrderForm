@@ -26,7 +26,7 @@
 // =========================
 const CONFIG = {
   // Put your web app URL here (ends with /exec)
-  SCRIPT_URL: "https://script.google.com/a/macros/brewersak.com/s/AKfycbyJy0dtGCreQibEgamyXvhHA30wP0-kLI8TCoskz4lMdRuOsAq4MQOkNSa0i6ua_aYZ/exec",
+  SCRIPT_URL: "https://script.google.com/macros/s/AKfycbzgkI0hGD6aIdLuUYM8T_MD6XJyfzYBQmdoLW7z8yB2R6Sjh4BI5LHgyg_ybvVisY6K/exec",
 
   // Endpoints
   GET_CATEGORIES: (t) => `${CONFIG.SCRIPT_URL}?action=categories&t=${t}`,
