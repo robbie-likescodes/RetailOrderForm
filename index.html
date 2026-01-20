@@ -7,44 +7,71 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="topbar__row">
-      <div>
-        <div class="title">Retail Order</div>
-        <div class="subtitle" id="lastUpdated">Catalog: not loaded</div>
+  <section id="homeScreen" class="home">
+    <div class="home__card">
+      <h1 class="home__title">RETAIL ORDERS</h1>
+      <div class="home__menu">
+        <button class="btn btn--primary" id="homeOrder" type="button">Order</button>
+        <button class="btn btn--ghost" id="homeDrivers" type="button">Drivers</button>
+        <button class="btn btn--ghost" id="homeHistory" type="button">History</button>
+        <button class="btn btn--ghost" id="homeReports" type="button">Reports</button>
       </div>
-      <button class="btn btn--ghost" id="refreshBtn" type="button">Refresh Products</button>
     </div>
+  </section>
 
-    <div class="meta">
-      <label class="field">
-        <span>Store</span>
-        <input id="store" placeholder="Boniface / Huffman / ..." autocomplete="off" required />
-      </label>
+  <div id="orderApp" hidden>
+    <header class="topbar">
+      <div class="topbar__row">
+        <div>
+          <div class="title">Retail Orders</div>
+          <div class="subtitle" id="lastUpdated">Catalog: not loaded</div>
+        </div>
+        <div class="topbar__right">
+          <div class="topbar__actions">
+            <button class="btn btn--ghost btn--tab is-active" id="orderTabBtn" type="button">Order</button>
+            <button class="btn btn--ghost btn--tab" id="reportsTabBtn" type="button">Reports</button>
+            <a class="btn btn--ghost btn--tab" href="history.html">History</a>
+            <a class="btn btn--ghost btn--tab" href="delivery.html">Drivers</a>
+            <button class="btn btn--ghost" id="refreshBtn" type="button">Refresh Products</button>
+          </div>
+          <div class="topbar__menu">
+            <button class="icon-button" id="topMenuToggle" type="button" aria-expanded="false" aria-controls="topMenuList" aria-label="Open menu">
+              ☰
+            </button>
+            <div class="menu menu--dropdown" id="topMenuList" hidden>
+              <button class="menu__item" id="topMenuOrder" type="button">Order Products</button>
+              <button class="menu__item" id="topMenuDrivers" type="button">Drivers</button>
+              <button class="menu__item" id="topMenuHistory" type="button">History</button>
+              <button class="menu__item" id="topMenuReports" type="button">Reports</button>
+            </div>
+          </div>
+        </div>
+      </div>
 
-      <div class="meta__row">
+      <div class="meta">
         <label class="field">
-          <span>Requested date</span>
-          <input id="requestedDate" type="date" required />
+          <span>Store</span>
+          <input id="store" placeholder="Boniface / Huffman / ..." autocomplete="off" required />
+        </label>
+
+        <div class="meta__row">
+          <label class="field">
+            <span>Requested date</span>
+            <input id="requestedDate" type="date" required />
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Placed by</span>
+          <input id="placedBy" placeholder="Name" autocomplete="name" required />
+        </label>
+
+        <label class="field">
+          <span>Email</span>
+          <input id="email" placeholder="optional" inputmode="email" autocomplete="email" />
         </label>
       </div>
-
-      <label class="field">
-        <span>Placed by</span>
-        <input id="placedBy" placeholder="Name" autocomplete="name" required />
-      </label>
-
-      <label class="field">
-        <span>Email</span>
-        <input id="email" placeholder="optional" inputmode="email" autocomplete="email" />
-      </label>
-
-      <label class="field">
-        <span>Notes</span>
-        <textarea id="notes" rows="2" placeholder="Anything the office should know"></textarea>
-      </label>
-    </div>
-  </header>
+    </header>
 
   <main class="container">
     <section id="catalog" class="card catalog">
@@ -76,17 +103,40 @@
       <div class="error" id="errorBox" hidden></div>
     </section>
 
-    <section id="review" class="card" hidden>
-      <h2>Review</h2>
-      <div id="reviewList" class="reviewList"></div>
-      <div class="actions">
-        <button class="btn" id="editBtn" type="button">Back to editing</button>
-        <button class="btn btn--primary" id="submitBtn" type="button">Submit Order</button>
-      </div>
-      <div class="error" id="submitError" hidden></div>
-      <div class="success" id="submitSuccess" hidden></div>
-    </section>
-  </main>
+        <div class="reports__section">
+          <h3>Store comparison over time</h3>
+          <div class="reports__filters reports__filters--compact">
+            <label class="field">
+              <span>Product</span>
+              <select id="compareProduct">
+                <option value="">Select a product</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Start date</span>
+              <input id="compareStart" type="date" />
+            </label>
+            <label class="field">
+              <span>End date</span>
+              <input id="compareEnd" type="date" />
+            </label>
+          </div>
+          <div class="tableWrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Store</th>
+                  <th>Qty</th>
+                </tr>
+              </thead>
+              <tbody id="compareBody"></tbody>
+            </table>
+            <div class="empty" id="compareEmpty" hidden>Choose a product and date range to compare stores.</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
 
   <script src="app.js"></script>
 </body>

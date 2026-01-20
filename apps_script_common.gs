@@ -63,3 +63,26 @@ function isRowActive_(row) {
   if (!normalized) return false;
   return ["true", "yes", "y", "1"].includes(normalized);
 }
+
+function extractOrderItems_(row) {
+  const items = [];
+  const productKeys = Object.keys(row || {})
+    .filter(key => key.startsWith("product_"))
+    .map(key => {
+      const match = key.match(/^product_(\d+)$/);
+      return match ? Number(match[1]) : null;
+    })
+    .filter(num => Number.isFinite(num))
+    .sort((a, b) => a - b);
+
+  productKeys.forEach((num) => {
+    const name = String(row[`product_${num}`] || "").trim();
+    const qty = row[`qty_${num}`];
+    if (!name && (qty === "" || qty === null || typeof qty === "undefined")) {
+      return;
+    }
+    items.push({ name, qty });
+  });
+
+  return items;
+}

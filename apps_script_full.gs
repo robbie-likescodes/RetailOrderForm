@@ -9,9 +9,7 @@
  * Sheets expected:
  *  - Categories: category | sort | active | display_name
  *  - Products: item_no | sku | name | category | unit | pack_size | active | sort
- *  - Orders: order_id | created_at | store | placed_by | phone | email | requested_date |
- *            delivery_method (optional) | notes | item_count | total_qty | token | user_agent
- *  - OrderItems: order_id | item_no | sku | name | category | unit | pack_size | qty
+ *  - Orders: order_id | timestamp | store | placed_by | phone | email | notes | items_json | items_summary | status | Product 1 | Qty 1 | ...
  */
 
 const CONFIG = {
@@ -90,6 +88,50 @@ function doGet(e) {
       return jsonResponse(payload);
     }
 
+    if (action === "order_history") {
+      const rawOrders = getSheetRows_(CONFIG.SHEETS.ORDERS)
+        .filter(row => row.store);
+      const orders = rawOrders.map((row, index) => {
+        const items = extractOrderItems_(row);
+        const totals = items.reduce(
+          (acc, item) => {
+            acc.itemCount += 1;
+            acc.totalQty += Number(item.qty || 0);
+            return acc;
+          },
+          { itemCount: 0, totalQty: 0 }
+        );
+
+        const fallbackOrderId = `row_${index + 2}`;
+
+        return {
+          order_id: String(row.order_id || fallbackOrderId).trim(),
+          created_at: String(row.timestamp || "").trim(),
+          store: String(row.store || "").trim(),
+          placed_by: String(row.placed_by || "").trim(),
+          email: String(row.email || "").trim(),
+          notes: String(row.notes || "").trim(),
+          item_count: totals.itemCount,
+          total_qty: totals.totalQty,
+        };
+      });
+
+      const items = rawOrders.flatMap((row, index) => (
+        extractOrderItems_(row).map(item => ({
+          order_id: String(row.order_id || `row_${index + 2}`).trim(),
+          name: item.name,
+          qty: item.qty,
+        }))
+      ));
+
+      return jsonResponse({
+        ok: true,
+        orders,
+        items,
+        updated_at: new Date().toISOString(),
+      });
+    }
+
     return jsonResponse({
       ok: false,
       error: `Unknown action: ${action}`,
@@ -127,28 +169,19 @@ function doPost(e) {
 
     const orderId = Utilities.getUuid();
     const createdAt = new Date().toISOString();
+    const maxProducts = 100;
 
-    const items = payload.items
-      .map(item => ({
-        item_no: String(item.item_no || "").trim(),
-        sku: String(item.sku || "").trim(),
-        name: String(item.name || "").trim(),
-        category: String(item.category || "").trim(),
-        unit: String(item.unit || "").trim(),
-        pack_size: String(item.pack_size || "").trim(),
-        qty: Number(item.qty || 0),
-      }))
-      .filter(item => item.sku && item.name && item.qty > 0);
-
-    if (items.length === 0) {
+    const normalized = normalizeItems_(payload.items);
+    if (normalized.rejected.length) {
       return jsonResponse({
         ok: false,
-        error: "Order has no items with quantities.",
+        error: "Order has invalid items.",
+        details: { rejected_items: normalized.rejected },
         updated_at: createdAt,
       });
     }
 
-    const totals = items.reduce(
+    const totals = normalized.items.reduce(
       (acc, item) => {
         acc.itemCount += 1;
         acc.totalQty += item.qty;
@@ -161,70 +194,31 @@ function doPost(e) {
     lock.waitLock(10000);
 
     try {
-      const ordersSheet = ensureSheet_(CONFIG.SHEETS.ORDERS, [
-        "order_id",
-        "created_at",
-        "store",
-        "placed_by",
-        "phone",
-        "email",
-        "requested_date",
-        "delivery_method",
-        "notes",
-        "item_count",
-        "total_qty",
-        "token",
-        "user_agent",
-      ]);
+      const ordersSheet = ensureSheet_(
+        CONFIG.SHEETS.ORDERS,
+        buildOrderHeaders_(maxProducts)
+      );
+
+      const itemCells = buildProductCells_(normalized.items, maxProducts);
 
       ordersSheet.appendRow([
         orderId,
-        createdAt,
+        payload.timestamp,
         payload.store,
         payload.placed_by,
         payload.phone || "",
         payload.email || "",
-        payload.requested_date,
-        payload.delivery_method || "",
         payload.notes || "",
-        totals.itemCount,
-        totals.totalQty,
-        payload.token || "",
-        (payload.client && payload.client.userAgent) || "",
+        JSON.stringify(normalized.items),
+        buildItemsSummary_(normalized.items),
+        payload.status || "",
+        ...itemCells,
       ]);
-
-      const itemsSheet = ensureSheet_(CONFIG.SHEETS.ORDER_ITEMS, [
-        "order_id",
-        "item_no",
-        "sku",
-        "name",
-        "category",
-        "unit",
-        "pack_size",
-        "qty",
-      ]);
-
-      const itemRows = items.map(item => ([
-        orderId,
-        item.item_no,
-        item.sku,
-        item.name,
-        item.category,
-        item.unit,
-        item.pack_size,
-        item.qty,
-      ]));
-
-      if (itemRows.length) {
-        itemsSheet
-          .getRange(itemsSheet.getLastRow() + 1, 1, itemRows.length, itemRows[0].length)
-          .setValues(itemRows);
-      }
     } finally {
       lock.releaseLock();
     }
 
-    maybeSendEmail_(orderId, payload, items, totals);
+    maybeSendEmail_(orderId, payload, normalized.items, totals);
 
     return jsonResponse({
       ok: true,
@@ -268,11 +262,8 @@ function validateToken_(payload) {
 function validateOrder_(payload) {
   if (!payload) return "Missing order payload.";
   if (!payload.store) return "Store is required.";
+  if (!payload.timestamp) return "Timestamp is required.";
   if (!payload.placed_by) return "Placed by is required.";
-  if (!payload.requested_date) return "Requested date is required.";
-  if (!Array.isArray(payload.items) || payload.items.length === 0) {
-    return "Order must include at least one item.";
-  }
   return "";
 }
 
@@ -311,6 +302,72 @@ function isRowActive_(row) {
   const normalized = String(raw || "").trim().toLowerCase();
   if (!normalized) return false;
   return ["true", "yes", "y", "1"].includes(normalized);
+}
+
+function normalizeItems_(items) {
+  const normalizedItems = [];
+  const rejectedItems = [];
+
+  (items || []).forEach((item, index) => {
+    const normalized = {
+      name: String(item.name || "").trim(),
+      qty: Number(item.qty || 0),
+    };
+
+    const reasons = [];
+    if (!normalized.name) reasons.push("Missing name.");
+    if (!Number.isFinite(normalized.qty) || normalized.qty <= 0) {
+      reasons.push("Quantity must be greater than zero.");
+    }
+
+    if (reasons.length) {
+      rejectedItems.push({
+        index,
+        reasons,
+        item: normalized,
+      });
+    } else {
+      normalizedItems.push(normalized);
+    }
+  });
+
+  return { items: normalizedItems, rejected: rejectedItems };
+}
+
+function buildOrderHeaders_(maxProducts) {
+  const headers = [
+    "order_id",
+    "timestamp",
+    "store",
+    "placed_by",
+    "phone",
+    "email",
+    "notes",
+    "items_json",
+    "items_summary",
+    "status",
+  ];
+
+  for (let i = 1; i <= maxProducts; i += 1) {
+    headers.push(`Product ${i}`, `Qty ${i}`);
+  }
+
+  return headers;
+}
+
+function buildProductCells_(items, maxProducts) {
+  const cells = new Array(maxProducts * 2).fill("");
+  items.slice(0, maxProducts).forEach((item, index) => {
+    cells[index * 2] = item.name;
+    cells[index * 2 + 1] = item.qty;
+  });
+  return cells;
+}
+
+function buildItemsSummary_(items) {
+  return items
+    .map(item => `${item.name} x${item.qty}`)
+    .join(", ");
 }
 
 function ensureSheet_(name, headers) {
@@ -353,11 +410,31 @@ function maybeSendEmail_(orderId, payload, items, totals) {
       `New retail order\n\n` +
       `Store: ${payload.store}\n` +
       `Placed by: ${payload.placed_by}\n` +
-      `Requested date: ${payload.requested_date}\n` +
-      `Delivery: ${payload.delivery_method}\n` +
-      `Phone: ${payload.phone || ""}\n` +
       `Email: ${payload.email || ""}\n` +
       `Notes: ${payload.notes || ""}\n` +
       `Items (${totals.itemCount} / qty ${totals.totalQty}):\n${itemsSummary}`,
   });
+}
+
+function extractOrderItems_(row) {
+  const items = [];
+  const productKeys = Object.keys(row || {})
+    .filter(key => key.startsWith("product_"))
+    .map(key => {
+      const match = key.match(/^product_(\d+)$/);
+      return match ? Number(match[1]) : null;
+    })
+    .filter(num => Number.isFinite(num))
+    .sort((a, b) => a - b);
+
+  productKeys.forEach((num) => {
+    const name = String(row[`product_${num}`] || "").trim();
+    const qty = row[`qty_${num}`];
+    if (!name && (qty === "" || qty === null || typeof qty === "undefined")) {
+      return;
+    }
+    items.push({ name, qty });
+  });
+
+  return items;
 }
