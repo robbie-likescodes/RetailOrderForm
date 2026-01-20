@@ -90,6 +90,42 @@ function doGet(e) {
       return jsonResponse(payload);
     }
 
+    if (action === "order_history") {
+      const orders = getSheetRows_(CONFIG.SHEETS.ORDERS)
+        .filter(row => row.order_id && row.store)
+        .map(row => ({
+          order_id: String(row.order_id || "").trim(),
+          created_at: String(row.created_at || "").trim(),
+          store: String(row.store || "").trim(),
+          placed_by: String(row.placed_by || "").trim(),
+          email: String(row.email || "").trim(),
+          requested_date: String(row.requested_date || "").trim(),
+          notes: String(row.notes || "").trim(),
+          item_count: row.item_count || "",
+          total_qty: row.total_qty || "",
+        }));
+
+      const items = getSheetRows_(CONFIG.SHEETS.ORDER_ITEMS)
+        .filter(row => row.order_id && row.sku)
+        .map(row => ({
+          order_id: String(row.order_id || "").trim(),
+          item_no: String(row.item_no || "").trim(),
+          sku: String(row.sku || "").trim(),
+          name: String(row.name || "").trim(),
+          category: String(row.category || "").trim(),
+          unit: String(row.unit || "").trim(),
+          pack_size: String(row.pack_size || "").trim(),
+          qty: row.qty || "",
+        }));
+
+      return jsonResponse({
+        ok: true,
+        orders,
+        items,
+        updated_at: new Date().toISOString(),
+      });
+    }
+
     return jsonResponse({
       ok: false,
       error: `Unknown action: ${action}`,
