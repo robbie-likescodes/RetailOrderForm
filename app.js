@@ -265,11 +265,12 @@ function syncMetaFromInputs() {
 // CATALOG: BUILD STEPS
 // =========================
 function normalizeCategoryRows(rows) {
-  // expected: {category, display_name, sort}
+  // expected: {category, display_name, sort, active}
   const out = [];
   for (const r of rows || []) {
     const category = String(r.category || "").trim();
-    if (!category) continue;
+    const active = String(r.active ?? "TRUE").toUpperCase() === "TRUE";
+    if (!category || !active) continue;
     out.push({
       category,
       display_name: String(r.display_name || category).trim(),
@@ -281,13 +282,14 @@ function normalizeCategoryRows(rows) {
 }
 
 function normalizeProductRows(rows) {
-  // expected: item_no, sku, name, category, unit, pack_size, sort
+  // expected: item_no, sku, name, category, unit, pack_size, sort, active
   const out = [];
   for (const r of rows || []) {
     const sku = String(r.sku || "").trim();
     const name = String(r.name || "").trim();
     const category = String(r.category || "").trim();
-    if (!sku || !name || !category) continue;
+    const active = String(r.active ?? "TRUE").toUpperCase() === "TRUE";
+    if (!sku || !name || !category || !active) continue;
 
     out.push({
       item_no: String(r.item_no || "").trim(),
@@ -780,6 +782,11 @@ function selectedItemsPayload() {
 async function submitOrder() {
   showSubmitError("");
   showSubmitSuccess("");
+
+  if (!TOKEN) {
+    showSubmitError("Missing security token. Please use the authorized order link.");
+    return;
+  }
 
   const metaErr = validateMeta();
   if (metaErr) { showSubmitError(metaErr); return; }
