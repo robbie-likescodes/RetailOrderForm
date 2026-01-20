@@ -20,6 +20,7 @@ function doPost(e) {
 
     const orderId = Utilities.getUuid();
     const createdAt = new Date().toISOString();
+    const maxProducts = 100;
 
     const normalized = normalizeItems_(payload.items);
     if (normalized.rejected.length) {
@@ -31,27 +32,26 @@ function doPost(e) {
       ));
     }
 
-    const totals = normalized.items.reduce(
-      (acc, item) => {
-        acc.itemCount += 1;
-        acc.totalQty += item.qty;
-        return acc;
-      },
-      { itemCount: 0, totalQty: 0 }
+    const itemsSummary = buildItemsSummary_(normalized.items);
+
+    const ordersSheet = ensureSheet_(
+      CONFIG.sheets.orders,
+      buildOrderHeaders_(maxProducts)
     );
 
-    const ordersSheet = ensureSheet_(CONFIG.sheets.orders, [
-      "date",
-      "store",
-      "placed_by",
-    ]);
-
-    const itemCells = normalized.items.flatMap(item => ([item.name, item.qty]));
+    const itemCells = buildProductCells_(normalized.items, maxProducts);
 
     ordersSheet.appendRow([
-      createdAt,
+      orderId,
+      payload.timestamp,
       payload.store,
       payload.placed_by,
+      payload.phone || "",
+      payload.email || "",
+      payload.notes || "",
+      JSON.stringify(normalized.items),
+      itemsSummary,
+      payload.status || "",
       ...itemCells,
     ]);
 
@@ -97,6 +97,9 @@ function validateOrder_(payload) {
   if (!payload.store) {
     return { message: "Store is required.", code: "MISSING_STORE" };
   }
+  if (!payload.timestamp) {
+    return { message: "Timestamp is required.", code: "MISSING_TIMESTAMP" };
+  }
   if (!payload.placed_by) {
     return { message: "Placed by is required.", code: "MISSING_PLACED_BY" };
   }
@@ -109,16 +112,10 @@ function normalizeItems_(items) {
 
   (items || []).forEach((item, index) => {
     const normalized = {
-      item_no: String(item.item_no || "").trim(),
-      sku: String(item.sku || "").trim(),
       name: String(item.name || "").trim(),
-      category: String(item.category || "").trim(),
-      unit: String(item.unit || "").trim(),
-      pack_size: String(item.pack_size || "").trim(),
       qty: Number(item.qty || 0),
     };
     const reasons = [];
-    if (!normalized.sku) reasons.push("Missing sku.");
     if (!normalized.name) reasons.push("Missing name.");
     if (!Number.isFinite(normalized.qty) || normalized.qty <= 0) {
       reasons.push("Quantity must be greater than zero.");
@@ -136,6 +133,42 @@ function normalizeItems_(items) {
   });
 
   return { items: normalizedItems, rejected: rejectedItems };
+}
+
+function buildOrderHeaders_(maxProducts) {
+  const headers = [
+    "order_id",
+    "timestamp",
+    "store",
+    "placed_by",
+    "phone",
+    "email",
+    "notes",
+    "items_json",
+    "items_summary",
+    "status",
+  ];
+
+  for (let i = 1; i <= maxProducts; i += 1) {
+    headers.push(`Product ${i}`, `Qty ${i}`);
+  }
+
+  return headers;
+}
+
+function buildProductCells_(items, maxProducts) {
+  const cells = new Array(maxProducts * 2).fill("");
+  items.slice(0, maxProducts).forEach((item, index) => {
+    cells[index * 2] = item.name;
+    cells[index * 2 + 1] = item.qty;
+  });
+  return cells;
+}
+
+function buildItemsSummary_(items) {
+  return items
+    .map(item => `${item.name} x${item.qty}`)
+    .join(", ");
 }
 
 function ensureSheet_(name, headers) {

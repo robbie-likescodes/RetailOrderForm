@@ -859,6 +859,7 @@ async function submitOrder() {
     token: TOKEN || undefined,
     store: state.meta.store,
     placed_by: state.meta.placed_by,
+    timestamp: nowIso(),
     email: state.meta.email,
     requested_date: state.meta.requested_date,
     notes: state.meta.notes,
