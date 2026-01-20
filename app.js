@@ -34,6 +34,7 @@ const CONFIG = {
 
   // POST URL is the same /exec (Apps Script doPost)
   POST_ORDER: () => `${CONFIG.SCRIPT_URL}`,
+  GET_ORDERS: (t) => `${CONFIG.SCRIPT_URL}?action=orders&t=${t}`,
 
   // Behavior
   CACHE_TTL_MS: 1000 * 60 * 60 * 12, // 12 hours (soft)
@@ -68,6 +69,8 @@ const CACHE = {
   QUANTITIES: "orderportal_quantities_v2",
   META: "orderportal_meta_v2",
   POSITION: "orderportal_position_v2",
+  ORDERS: "orderportal_orders_v1",
+  ORDERS_UPDATED_AT: "orderportal_orders_updated_at_v1",
 };
 
 // =========================
@@ -77,14 +80,18 @@ const $ = (id) => document.getElementById(id);
 const ui = {
   lastUpdated: $("lastUpdated"),
   refreshBtn: $("refreshBtn"),
+  orderTabBtn: $("orderTabBtn"),
+  reportsTabBtn: $("reportsTabBtn"),
   store: $("store"),
   requestedDate: $("requestedDate"),
   placedBy: $("placedBy"),
   email: $("email"),
   notes: $("notes"),
 
+  orderPanel: $("orderPanel"),
   wizard: $("wizard"),
   review: $("review"),
+  reportsPanel: $("reports"),
 
   pillCategory: $("pillCategory"),
   productName: $("productName"),
@@ -108,6 +115,23 @@ const ui = {
   categoryJumpMenu: $("categoryJumpMenu"),
   searchInput: $("searchInput"),
   netStatus: $("netStatus"),
+
+  reportHistoryCount: $("reportHistoryCount"),
+  reportStatus: $("reportStatus"),
+  reportTopStore: $("reportTopStore"),
+  refreshReportsBtn: $("refreshReportsBtn"),
+  reportProduct: $("reportProduct"),
+  reportStore: $("reportStore"),
+  reportDay: $("reportDay"),
+  reportMonth: $("reportMonth"),
+  reportYear: $("reportYear"),
+  reportStoreBody: $("reportStoreBody"),
+  reportStoreEmpty: $("reportStoreEmpty"),
+  compareProduct: $("compareProduct"),
+  compareStart: $("compareStart"),
+  compareEnd: $("compareEnd"),
+  compareBody: $("compareBody"),
+  compareEmpty: $("compareEmpty"),
 };
 
 // =========================
@@ -119,6 +143,8 @@ const state = {
   steps: [],        // flattened ordered products
   idx: 0,           // current step index
   quantities: {},   // sku -> qty number
+  orders: [],
+  ordersUpdatedAt: "",
   meta: {
     store: "",
     requested_date: "",
@@ -130,6 +156,17 @@ const state = {
   lastCatalogIso: "", // when refreshed
   lastCacheIso: "",   // when cached
   categoryIndex: new Map(), // category -> {start, end}
+  activeTab: "order",
+  reports: {
+    product: "",
+    store: "all",
+    day: "",
+    month: "",
+    year: "",
+    compareProduct: "",
+    compareStart: "",
+    compareEnd: "",
+  },
 };
 
 // =========================
@@ -176,6 +213,33 @@ function normalizeRowKeys(row) {
   }, {});
 }
 
+function normalizeOrderRows(rows) {
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row) => {
+    const normalized = normalizeRowKeys(row);
+    const items = Array.isArray(row.items) ? row.items : normalized.items;
+    const normalizedItems = Array.isArray(items)
+      ? items.map((item) => {
+        const normalizedItem = normalizeRowKeys(item);
+        return {
+          sku: normalizedItem.sku || item.sku || "",
+          item_no: normalizedItem.item_no || item.item_no || "",
+          name: normalizedItem.name || item.name || "",
+          qty: Number(normalizedItem.qty ?? item.qty ?? 0) || 0,
+        };
+      })
+      : [];
+    return {
+      id: normalized.id || row.id || `remote-${Math.random().toString(36).slice(2)}`,
+      store: normalized.store || row.store || "",
+      requested_date: normalized.requested_date || row.requested_date || "",
+      placed_by: normalized.placed_by || row.placed_by || "",
+      items: normalizedItems,
+      created_at: normalized.created_at || row.created_at || "",
+    };
+  });
+}
+
 function setText(el, txt) {
   if (!el) return;
   el.textContent = txt;
@@ -205,6 +269,27 @@ function isFiniteInt(n) {
   return Number.isFinite(n) && Math.floor(n) === n;
 }
 
+function parseDateValue(value) {
+  if (!value) return null;
+  const [year, month, day] = String(value).split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day);
+}
+
+function isSameDay(a, b) {
+  return a && b
+    && a.getFullYear() === b.getFullYear()
+    && a.getMonth() === b.getMonth()
+    && a.getDate() === b.getDate();
+}
+
+function isWithinRange(date, start, end) {
+  if (!date) return false;
+  if (start && date < start) return false;
+  if (end && date > end) return false;
+  return true;
+}
+
 // iOS: avoid zoom: ensure input font-size >= 16 in CSS, already done.
 
 // =========================
@@ -216,12 +301,16 @@ function loadCache() {
   const qtys = safeJsonParse(localStorage.getItem(CACHE.QUANTITIES) || "{}", {});
   const meta = safeJsonParse(localStorage.getItem(CACHE.META) || "{}", {});
   const pos = safeJsonParse(localStorage.getItem(CACHE.POSITION) || "{}", {});
+  const orders = safeJsonParse(localStorage.getItem(CACHE.ORDERS) || "[]", []);
+  const ordersUpdatedAt = localStorage.getItem(CACHE.ORDERS_UPDATED_AT) || "";
   const updatedAt = localStorage.getItem(CACHE.UPDATED_AT) || "";
   const cachedAt = localStorage.getItem(CACHE.CACHED_AT) || "";
 
   if (Array.isArray(cats) && cats.length) state.categories = cats;
   if (Array.isArray(prods) && prods.length) state.products = prods;
   if (qtys && typeof qtys === "object") state.quantities = qtys;
+  if (Array.isArray(orders)) state.orders = orders;
+  state.ordersUpdatedAt = ordersUpdatedAt;
   state.meta = { ...state.meta, ...(meta || {}) };
   state.meta = {
     store: state.meta.store || "",
@@ -766,6 +855,7 @@ async function refreshCatalog({ force = false } = {}) {
     setText(ui.lastUpdated, `Catalog: ${new Date(iso).toLocaleString()}`);
 
     saveCache();
+    updateReportOptions();
     renderWizard();
     state.dirty = false;
 
@@ -784,6 +874,310 @@ function updateNetStatus() {
   const online = navigator.onLine;
   ui.netStatus.textContent = online ? "Online" : "Offline";
   ui.netStatus.style.opacity = online ? "0.7" : "1";
+}
+
+// =========================
+// REPORTS
+// =========================
+function setReportStatus(message) {
+  if (!ui.reportStatus) return;
+  ui.reportStatus.textContent = message;
+}
+
+async function refreshReports({ force = false } = {}) {
+  if (!CONFIG.SCRIPT_URL || CONFIG.SCRIPT_URL.includes("PASTE_")) {
+    setReportStatus("History: unavailable (missing Apps Script URL).");
+    return;
+  }
+
+  if (!navigator.onLine && !force) {
+    setReportStatus("History: offline, using cached data.");
+    return;
+  }
+
+  if (ui.refreshReportsBtn) {
+    ui.refreshReportsBtn.disabled = true;
+    ui.refreshReportsBtn.textContent = "Refreshing...";
+  }
+
+  try {
+    const t = Date.now();
+    const ordersResp = await fetchJson(CONFIG.GET_ORDERS(t));
+    if (!ordersResp.ok) throw new Error(ordersResp.error || "Orders endpoint failed");
+    const orders = normalizeOrderRows(ordersResp.orders || []);
+    state.orders = orders;
+    const iso = nowIso();
+    state.ordersUpdatedAt = iso;
+    localStorage.setItem(CACHE.ORDERS, JSON.stringify(state.orders));
+    localStorage.setItem(CACHE.ORDERS_UPDATED_AT, iso);
+    setReportStatus(`History: ${new Date(iso).toLocaleString()}`);
+    updateReportOptions();
+    renderReports();
+  } catch (err) {
+    setReportStatus(`History: using cached data. (${String(err)})`);
+  } finally {
+    if (ui.refreshReportsBtn) {
+      ui.refreshReportsBtn.disabled = false;
+      ui.refreshReportsBtn.textContent = "Refresh Reports";
+    }
+  }
+}
+
+function setActiveTab(tab) {
+  state.activeTab = tab === "reports" ? "reports" : "order";
+  setHidden(ui.orderPanel, state.activeTab !== "order");
+  setHidden(ui.reportsPanel, state.activeTab !== "reports");
+
+  if (ui.orderTabBtn) ui.orderTabBtn.classList.toggle("is-active", state.activeTab === "order");
+  if (ui.reportsTabBtn) ui.reportsTabBtn.classList.toggle("is-active", state.activeTab === "reports");
+
+  if (state.activeTab === "reports") {
+    if (state.ordersUpdatedAt) {
+      setReportStatus(`History: ${new Date(state.ordersUpdatedAt).toLocaleString()}`);
+    } else {
+      setReportStatus("History: not loaded");
+    }
+    updateReportOptions();
+    renderReports();
+    if (!state.orders.length) {
+      refreshReports();
+    }
+  }
+}
+
+function normalizeProductKey(value) {
+  return String(value || "").trim();
+}
+
+function buildSelectOptions(select, options, selectedValue) {
+  if (!select) return;
+  select.innerHTML = "";
+  options.forEach((option) => {
+    const el = document.createElement("option");
+    el.value = option.value;
+    el.textContent = option.label;
+    select.appendChild(el);
+  });
+  if (selectedValue !== undefined && selectedValue !== null) {
+    select.value = selectedValue;
+  }
+}
+
+function getStoreList() {
+  const stores = new Set(CONFIG.STORES || []);
+  state.orders.forEach((order) => {
+    if (order && order.store) stores.add(order.store);
+  });
+  return Array.from(stores).sort((a, b) => a.localeCompare(b));
+}
+
+function getProductMap() {
+  const map = new Map();
+  state.products.forEach((product) => {
+    const key = product.sku || product.item_no || product.name;
+    if (!key) return;
+    map.set(key, product.name || product.sku || key);
+  });
+  state.orders.forEach((order) => {
+    (order.items || []).forEach((item) => {
+      const key = item.sku || item.item_no || item.name;
+      if (!key || map.has(key)) return;
+      map.set(key, item.name || key);
+    });
+  });
+  return map;
+}
+
+function updateReportOptions() {
+  const stores = getStoreList();
+  buildSelectOptions(
+    ui.reportStore,
+    [{ value: "all", label: "All stores" }, ...stores.map((store) => ({ value: store, label: store }))],
+    state.reports.store
+  );
+
+  const productMap = getProductMap();
+  const productOptions = [{ value: "", label: "Select a product" }];
+  productMap.forEach((label, value) => productOptions.push({ value, label }));
+  buildSelectOptions(ui.reportProduct, productOptions, state.reports.product);
+  buildSelectOptions(ui.compareProduct, productOptions, state.reports.compareProduct);
+
+  const years = new Set();
+  state.orders.forEach((order) => {
+    const date = parseDateValue(order.requested_date);
+    if (date) years.add(date.getFullYear());
+  });
+  const yearOptions = [{ value: "", label: "All years" }];
+  Array.from(years).sort((a, b) => b - a).forEach((year) => {
+    yearOptions.push({ value: String(year), label: String(year) });
+  });
+  buildSelectOptions(ui.reportYear, yearOptions, state.reports.year);
+
+  if (ui.reportHistoryCount) {
+    ui.reportHistoryCount.textContent = String(state.orders.length);
+  }
+
+  if (ui.reportTopStore) {
+    ui.reportTopStore.textContent = "—";
+  }
+}
+
+function syncReportFiltersFromInputs() {
+  if (!ui.reportProduct) return;
+  state.reports.product = normalizeProductKey(ui.reportProduct.value);
+  state.reports.store = ui.reportStore?.value || "all";
+  state.reports.day = ui.reportDay?.value || "";
+  state.reports.month = ui.reportMonth?.value || "";
+  state.reports.year = ui.reportYear?.value || "";
+  state.reports.compareProduct = normalizeProductKey(ui.compareProduct?.value);
+  state.reports.compareStart = ui.compareStart?.value || "";
+  state.reports.compareEnd = ui.compareEnd?.value || "";
+}
+
+function passesDateFilters(orderDate, filters) {
+  if (!orderDate) return false;
+  const dayDate = parseDateValue(filters.day);
+  if (dayDate) return isSameDay(orderDate, dayDate);
+
+  const monthNum = filters.month ? Number(filters.month) : null;
+  const yearNum = filters.year ? Number(filters.year) : null;
+  if (yearNum && orderDate.getFullYear() !== yearNum) return false;
+  if (monthNum && orderDate.getMonth() + 1 !== monthNum) return false;
+  return true;
+}
+
+function itemMatchesProduct(item, productKey) {
+  if (!productKey) return false;
+  return item.sku === productKey || item.item_no === productKey || item.name === productKey;
+}
+
+function renderReports() {
+  if (!ui.reportsPanel) return;
+  syncReportFiltersFromInputs();
+
+  const { product, store, day, month, year } = state.reports;
+  const storeTotals = new Map();
+  const stores = getStoreList();
+  stores.forEach((storeName) => storeTotals.set(storeName, 0));
+
+  const showProductTotals = !!product;
+  if (showProductTotals) {
+    state.orders.forEach((order) => {
+      if (!order || !order.requested_date) return;
+      const orderDate = parseDateValue(order.requested_date);
+      if (!passesDateFilters(orderDate, { day, month, year })) return;
+      if (store !== "all" && order.store !== store) return;
+
+      (order.items || []).forEach((item) => {
+        if (!itemMatchesProduct(item, product)) return;
+        const current = storeTotals.get(order.store) || 0;
+        const qty = Number(item.qty) || 0;
+        storeTotals.set(order.store, current + qty);
+      });
+    });
+  }
+
+  if (ui.reportStoreBody) {
+    ui.reportStoreBody.innerHTML = "";
+    if (showProductTotals && stores.length) {
+      const rows = (store === "all" ? stores : stores.filter((name) => name === store))
+        .sort((a, b) => (storeTotals.get(b) || 0) - (storeTotals.get(a) || 0));
+      rows.forEach((storeName) => {
+        const row = document.createElement("tr");
+        const nameCell = document.createElement("td");
+        nameCell.textContent = storeName;
+        const qtyCell = document.createElement("td");
+        qtyCell.textContent = String(storeTotals.get(storeName) || 0);
+        row.appendChild(nameCell);
+        row.appendChild(qtyCell);
+        ui.reportStoreBody.appendChild(row);
+      });
+    }
+  }
+
+  setHidden(ui.reportStoreEmpty, showProductTotals && stores.length);
+  if (ui.reportStoreEmpty && !showProductTotals) {
+    ui.reportStoreEmpty.textContent = "Select a product and timeframe to see totals.";
+  } else if (ui.reportStoreEmpty && !stores.length) {
+    ui.reportStoreEmpty.textContent = "No order history yet. Submit orders to populate reports.";
+  }
+
+  const compareProduct = state.reports.compareProduct;
+  const compareStart = parseDateValue(state.reports.compareStart);
+  const compareEnd = parseDateValue(state.reports.compareEnd);
+  const compareTotals = new Map();
+  stores.forEach((storeName) => compareTotals.set(storeName, 0));
+
+  let compareValid = !!compareProduct;
+  if (compareValid && compareStart && compareEnd && compareStart > compareEnd) {
+    compareValid = false;
+    if (ui.compareEmpty) ui.compareEmpty.textContent = "Start date must be before end date.";
+  } else if (ui.compareEmpty) {
+    ui.compareEmpty.textContent = "Choose a product and date range to compare stores.";
+  }
+
+  if (compareValid) {
+    state.orders.forEach((order) => {
+      if (!order || !order.requested_date) return;
+      const orderDate = parseDateValue(order.requested_date);
+      if (!isWithinRange(orderDate, compareStart, compareEnd)) return;
+
+      (order.items || []).forEach((item) => {
+        if (!itemMatchesProduct(item, compareProduct)) return;
+        const current = compareTotals.get(order.store) || 0;
+        const qty = Number(item.qty) || 0;
+        compareTotals.set(order.store, current + qty);
+      });
+    });
+  }
+
+  if (ui.compareBody) {
+    ui.compareBody.innerHTML = "";
+    if (compareValid && stores.length) {
+      const sortedStores = Array.from(stores).sort((a, b) => {
+        return (compareTotals.get(b) || 0) - (compareTotals.get(a) || 0);
+      });
+      sortedStores.forEach((storeName) => {
+        const row = document.createElement("tr");
+        const nameCell = document.createElement("td");
+        nameCell.textContent = storeName;
+        const qtyCell = document.createElement("td");
+        qtyCell.textContent = String(compareTotals.get(storeName) || 0);
+        row.appendChild(nameCell);
+        row.appendChild(qtyCell);
+        ui.compareBody.appendChild(row);
+      });
+      if (ui.reportTopStore) {
+        const topStore = sortedStores[0];
+        ui.reportTopStore.textContent = topStore
+          ? `${topStore} (${compareTotals.get(topStore) || 0})`
+          : "—";
+      }
+    }
+  }
+
+  setHidden(ui.compareEmpty, compareValid && stores.length);
+  if (ui.compareEmpty && !stores.length) {
+    ui.compareEmpty.textContent = "No order history yet. Submit orders to populate reports.";
+  }
+  if (ui.reportTopStore && !compareValid) {
+    ui.reportTopStore.textContent = "—";
+  }
+}
+
+function recordOrderHistory(payload, orderId) {
+  const entry = {
+    id: orderId || `local-${Date.now()}`,
+    store: payload.store,
+    requested_date: payload.requested_date,
+    placed_by: payload.placed_by,
+    items: payload.items || [],
+    created_at: nowIso(),
+  };
+  state.orders.push(entry);
+  localStorage.setItem(CACHE.ORDERS, JSON.stringify(state.orders));
+  updateReportOptions();
+  renderReports();
 }
 
 // =========================
@@ -872,6 +1266,7 @@ async function submitOrder() {
     showSubmitSuccess(`Order submitted successfully. Order ID: ${orderId}`);
 
     // Reset quantities after success
+    recordOrderHistory(payload, orderId);
     state.quantities = {};
     state.dirty = false;
     saveCache();
@@ -893,6 +1288,8 @@ async function submitOrder() {
 // =========================
 function wireEvents() {
   ui.refreshBtn?.addEventListener("click", () => refreshCatalog());
+  ui.orderTabBtn?.addEventListener("click", () => setActiveTab("order"));
+  ui.reportsTabBtn?.addEventListener("click", () => setActiveTab("reports"));
 
   ui.nextBtn?.addEventListener("click", goNext);
   ui.backBtn?.addEventListener("click", goBack);
@@ -916,6 +1313,17 @@ function wireEvents() {
   ui.placedBy?.addEventListener("input", markDirty);
   ui.email?.addEventListener("input", markDirty);
   ui.notes?.addEventListener("input", markDirty);
+
+  const rerenderReports = () => renderReports();
+  ui.reportProduct?.addEventListener("change", rerenderReports);
+  ui.reportStore?.addEventListener("change", rerenderReports);
+  ui.reportMonth?.addEventListener("change", rerenderReports);
+  ui.reportYear?.addEventListener("change", rerenderReports);
+  ui.reportDay?.addEventListener("change", rerenderReports);
+  ui.compareProduct?.addEventListener("change", rerenderReports);
+  ui.compareStart?.addEventListener("change", rerenderReports);
+  ui.compareEnd?.addEventListener("change", rerenderReports);
+  ui.refreshReportsBtn?.addEventListener("click", () => refreshReports({ force: true }));
 
   // Optional: category jump toggle
   ui.categoryJumpBtn?.addEventListener("click", () => {
@@ -945,6 +1353,11 @@ function init() {
   wireEvents();
   updateNetStatus();
   renderWizard();
+  updateReportOptions();
+  setActiveTab("order");
+  if (state.ordersUpdatedAt) {
+    setReportStatus(`History: ${new Date(state.ordersUpdatedAt).toLocaleString()}`);
+  }
 
   // If store is locked by URL param, keep it locked
   if (STORE_LOCK && ui.store) {
