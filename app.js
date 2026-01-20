@@ -714,6 +714,12 @@ function renderItems() {
         <input class="qtyInput" inputmode="numeric" pattern="[0-9]*" value="${qty ? qty : ""}" />
         <button class="qtyBtn" type="button" data-action="increment">+</button>
       </div>
+      <div class="qtyQuick" data-sku="${escapeHtml(item.sku)}">
+        <button class="qtyChip" type="button" data-qty="1">+1</button>
+        <button class="qtyChip" type="button" data-qty="2">2</button>
+        <button class="qtyChip" type="button" data-qty="3">3</button>
+        <button class="qtyChip" type="button" data-qty="5">5</button>
+      </div>
     `;
     ui.itemList.appendChild(card);
   });
@@ -1407,18 +1413,32 @@ function wireEvents() {
 
   ui.itemList?.addEventListener("click", (event) => {
     const btn = event.target.closest("button[data-action]");
-    if (!btn) return;
-    const control = btn.closest(".qtyControl");
-    const sku = control?.dataset?.sku;
-    if (!sku) return;
+    if (btn) {
+      const control = btn.closest(".qtyControl");
+      const sku = control?.dataset?.sku;
+      if (!sku) return;
 
-    const current = getQty(sku);
-    const action = btn.dataset.action;
-    const next = action === "increment" ? current + 1 : current - 1;
-    const updated = Math.max(0, next);
-    setQty(sku, updated);
-    const input = control.querySelector(".qtyInput");
-    if (input) input.value = updated > 0 ? String(updated) : "";
+      const current = getQty(sku);
+      const action = btn.dataset.action;
+      const next = action === "increment" ? current + 1 : current - 1;
+      const updated = Math.max(0, next);
+      setQty(sku, updated);
+      const input = control.querySelector(".qtyInput");
+      if (input) input.value = updated > 0 ? String(updated) : "";
+      showError("");
+      return;
+    }
+
+    const chip = event.target.closest("button[data-qty]");
+    if (!chip) return;
+    const container = chip.closest(".qtyQuick");
+    const sku = container?.dataset?.sku;
+    if (!sku) return;
+    const qty = Number(chip.dataset.qty);
+    if (!Number.isFinite(qty)) return;
+    setQty(sku, qty);
+    const input = container.closest(".itemCard")?.querySelector(".qtyInput");
+    if (input) input.value = qty > 0 ? String(qty) : "";
     showError("");
   });
 
