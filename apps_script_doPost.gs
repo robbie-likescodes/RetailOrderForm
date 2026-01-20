@@ -20,6 +20,7 @@ function doPost(e) {
 
     const orderId = Utilities.getUuid();
     const createdAt = new Date().toISOString();
+    const maxProducts = 100;
 
     const normalized = normalizeItems_(payload.items);
     if (normalized.rejected.length) {
@@ -31,83 +32,28 @@ function doPost(e) {
       ));
     }
 
-    if (normalized.items.length === 0) {
-      return jsonResponse(buildError_(
-        "Order has no items with quantities.",
-        "NO_VALID_ITEMS",
-        null,
-        requestId
-      ));
-    }
+    const itemsSummary = buildItemsSummary_(normalized.items);
 
-    const totals = normalized.items.reduce(
-      (acc, item) => {
-        acc.itemCount += 1;
-        acc.totalQty += item.qty;
-        return acc;
-      },
-      { itemCount: 0, totalQty: 0 }
+    const ordersSheet = ensureSheet_(
+      CONFIG.sheets.orders,
+      buildOrderHeaders_(maxProducts)
     );
 
-    const ordersSheet = ensureSheet_(CONFIG.sheets.orders, [
-      "order_id",
-      "created_at",
-      "store",
-      "placed_by",
-      "phone",
-      "email",
-      "requested_date",
-      "delivery_method",
-      "notes",
-      "item_count",
-      "total_qty",
-      "token",
-      "user_agent",
-    ]);
+    const itemCells = buildProductCells_(normalized.items, maxProducts);
 
     ordersSheet.appendRow([
       orderId,
-      createdAt,
+      payload.timestamp,
       payload.store,
       payload.placed_by,
       payload.phone || "",
       payload.email || "",
-      payload.requested_date,
-      payload.delivery_method || "",
       payload.notes || "",
-      totals.itemCount,
-      totals.totalQty,
-      payload.token || "",
-      (payload.client && payload.client.userAgent) || "",
+      JSON.stringify(normalized.items),
+      itemsSummary,
+      payload.status || "",
+      ...itemCells,
     ]);
-
-    const itemsSheet = ensureSheet_(CONFIG.sheets.orderItems, [
-      "order_id",
-      "item_no",
-      "sku",
-      "name",
-      "category",
-      "unit",
-      "pack_size",
-      "qty",
-    ]);
-
-    const itemRows = normalized.items.map(item => ([
-      orderId,
-      item.item_no,
-      item.sku,
-      item.name,
-      item.category,
-      item.unit,
-      item.pack_size,
-      item.qty,
-    ]));
-
-    if (itemRows.length) {
-      itemsSheet
-        .getRange(itemsSheet.getLastRow() + 1, 1, itemRows.length, itemRows[0].length)
-        .setValues(itemRows);
-    }
 
     return jsonResponse({
       ok: true,
@@ -151,14 +97,11 @@ function validateOrder_(payload) {
   if (!payload.store) {
     return { message: "Store is required.", code: "MISSING_STORE" };
   }
+  if (!payload.timestamp) {
+    return { message: "Timestamp is required.", code: "MISSING_TIMESTAMP" };
+  }
   if (!payload.placed_by) {
     return { message: "Placed by is required.", code: "MISSING_PLACED_BY" };
-  }
-  if (!payload.requested_date) {
-    return { message: "Requested date is required.", code: "MISSING_REQUESTED_DATE" };
-  }
-  if (!Array.isArray(payload.items) || payload.items.length === 0) {
-    return { message: "Order must include at least one item.", code: "MISSING_ITEMS" };
   }
   return null;
 }
@@ -169,16 +112,10 @@ function normalizeItems_(items) {
 
   (items || []).forEach((item, index) => {
     const normalized = {
-      item_no: String(item.item_no || "").trim(),
-      sku: String(item.sku || "").trim(),
       name: String(item.name || "").trim(),
-      category: String(item.category || "").trim(),
-      unit: String(item.unit || "").trim(),
-      pack_size: String(item.pack_size || "").trim(),
       qty: Number(item.qty || 0),
     };
     const reasons = [];
-    if (!normalized.sku) reasons.push("Missing sku.");
     if (!normalized.name) reasons.push("Missing name.");
     if (!Number.isFinite(normalized.qty) || normalized.qty <= 0) {
       reasons.push("Quantity must be greater than zero.");
@@ -196,6 +133,42 @@ function normalizeItems_(items) {
   });
 
   return { items: normalizedItems, rejected: rejectedItems };
+}
+
+function buildOrderHeaders_(maxProducts) {
+  const headers = [
+    "order_id",
+    "timestamp",
+    "store",
+    "placed_by",
+    "phone",
+    "email",
+    "notes",
+    "items_json",
+    "items_summary",
+    "status",
+  ];
+
+  for (let i = 1; i <= maxProducts; i += 1) {
+    headers.push(`Product ${i}`, `Qty ${i}`);
+  }
+
+  return headers;
+}
+
+function buildProductCells_(items, maxProducts) {
+  const cells = new Array(maxProducts * 2).fill("");
+  items.slice(0, maxProducts).forEach((item, index) => {
+    cells[index * 2] = item.name;
+    cells[index * 2 + 1] = item.qty;
+  });
+  return cells;
+}
+
+function buildItemsSummary_(items) {
+  return items
+    .map(item => `${item.name} x${item.qty}`)
+    .join(", ");
 }
 
 function ensureSheet_(name, headers) {

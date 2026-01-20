@@ -6,7 +6,7 @@ function doGet(e) {
       return jsonResponse(buildError_(
         "Missing action.",
         "MISSING_ACTION",
-        { expected: ["categories", "products"] },
+        { expected: ["categories", "products", "order_history"] },
         requestId
       ));
     }
@@ -53,10 +53,55 @@ function doGet(e) {
       });
     }
 
+    if (action === "order_history") {
+      const rawOrders = getSheetRows_(CONFIG.sheets.orders)
+        .filter(row => row.store);
+
+      const orders = rawOrders.map((row, index) => {
+        const items = extractOrderItems_(row);
+        const totals = items.reduce(
+          (acc, item) => {
+            acc.itemCount += 1;
+            acc.totalQty += Number(item.qty || 0);
+            return acc;
+          },
+          { itemCount: 0, totalQty: 0 }
+        );
+
+        return {
+          order_id: `row_${index + 2}`,
+          created_at: String(row.date || "").trim(),
+          store: String(row.store || "").trim(),
+          placed_by: String(row.placed_by || "").trim(),
+          email: String(row.email || "").trim(),
+          notes: String(row.notes || "").trim(),
+          item_count: totals.itemCount,
+          total_qty: totals.totalQty,
+        };
+      });
+
+      const items = rawOrders.flatMap((row, index) => (
+        extractOrderItems_(row).map(item => ({
+          order_id: `row_${index + 2}`,
+          name: item.name,
+          qty: item.qty,
+        }))
+      ));
+
+      return jsonResponse({
+        ok: true,
+        action,
+        request_id: requestId,
+        orders,
+        items,
+        updated_at: new Date().toISOString(),
+      });
+    }
+
     return jsonResponse(buildError_(
       `Unknown action: ${action}`,
       "UNKNOWN_ACTION",
-      { received: action, expected: ["categories", "products"] },
+      { received: action, expected: ["categories", "products", "order_history"] },
       requestId
     ));
   } catch (err) {
