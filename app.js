@@ -68,6 +68,7 @@ const CACHE = {
   QUANTITIES: "orderportal_quantities_v2",
   META: "orderportal_meta_v2",
   POSITION: "orderportal_position_v2",
+  ORDERS: "orderportal_orders_v1",
 };
 
 // =========================
@@ -102,6 +103,7 @@ const ui = {
   submitBtn: $("submitBtn"),
   submitError: $("submitError"),
   submitSuccess: $("submitSuccess"),
+  todayOrdersList: $("todayOrdersList"),
 
   // Optional extras
   categoryJumpBtn: $("categoryJumpBtn"),
@@ -130,6 +132,7 @@ const state = {
   lastCatalogIso: "", // when refreshed
   lastCacheIso: "",   // when cached
   categoryIndex: new Map(), // category -> {start, end}
+  orders: [],
 };
 
 // =========================
@@ -249,6 +252,78 @@ function loadCache() {
   if (!state.meta.requested_date) state.meta.requested_date = todayDateValue();
 
   hydrateMetaInputs();
+}
+
+function loadOrders() {
+  const orders = safeJsonParse(localStorage.getItem(CACHE.ORDERS) || "[]", []);
+  state.orders = Array.isArray(orders) ? orders : [];
+}
+
+function saveOrders() {
+  localStorage.setItem(CACHE.ORDERS, JSON.stringify(state.orders));
+}
+
+function todayOrders() {
+  const today = todayDateValue();
+  return state.orders.filter((order) => order.requested_date === today);
+}
+
+function renderTodayOrders() {
+  if (!ui.todayOrdersList) return;
+  const orders = todayOrders();
+  ui.todayOrdersList.innerHTML = "";
+
+  if (orders.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "emptyState";
+    empty.textContent = "No orders placed yet for today.";
+    ui.todayOrdersList.appendChild(empty);
+    return;
+  }
+
+  orders.forEach((order) => {
+    const row = document.createElement("div");
+    row.className = "orderRow";
+
+    const details = document.createElement("div");
+    details.className = "orderRow__details";
+    details.innerHTML = `
+      <div class="orderRow__title">${escapeHtml(order.store || "Unknown Store")}</div>
+      <div class="orderRow__meta">${escapeHtml(order.placed_by || "Unknown")}</div>
+    `;
+
+    const status = document.createElement("div");
+    const ready = order.delivery?.status === "ready";
+    status.className = ready ? "statusBadge" : "statusBadge statusBadge--pending";
+    status.textContent = ready ? "✓ Ready for delivery" : "In progress";
+
+    row.appendChild(details);
+    row.appendChild(status);
+    ui.todayOrdersList.appendChild(row);
+  });
+}
+
+function createLocalOrderRecord(payload, items) {
+  const id = `local-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  return {
+    id,
+    store: payload.store,
+    placed_by: payload.placed_by,
+    requested_date: payload.requested_date,
+    notes: payload.notes || "",
+    created_at: nowIso(),
+    items: items.map((item) => ({ ...item })),
+    delivery: {
+      status: "pending",
+      items: {},
+    },
+  };
+}
+
+function storeLocalOrder(order) {
+  state.orders.unshift(order);
+  saveOrders();
+  renderTodayOrders();
 }
 
 function saveCache() {
@@ -845,6 +920,9 @@ async function submitOrder() {
     },
   };
 
+  const localOrder = createLocalOrderRecord(payload, items);
+  storeLocalOrder(localOrder);
+
   ui.submitBtn.disabled = true;
   ui.submitBtn.textContent = "Submitting...";
 
@@ -934,6 +1012,18 @@ function wireEvents() {
   // Online/offline indicator
   window.addEventListener("online", updateNetStatus);
   window.addEventListener("offline", updateNetStatus);
+
+  window.addEventListener("storage", (event) => {
+    if (event.key === CACHE.ORDERS) {
+      loadOrders();
+      renderTodayOrders();
+    }
+  });
+
+  window.addEventListener("focus", () => {
+    loadOrders();
+    renderTodayOrders();
+  });
 }
 
 // =========================
@@ -941,10 +1031,12 @@ function wireEvents() {
 // =========================
 function init() {
   loadCache();
+  loadOrders();
   buildSteps();
   wireEvents();
   updateNetStatus();
   renderWizard();
+  renderTodayOrders();
 
   // If store is locked by URL param, keep it locked
   if (STORE_LOCK && ui.store) {
