@@ -54,32 +54,39 @@ function doGet(e) {
     }
 
     if (action === "order_history") {
-      const orders = getSheetRows_(CONFIG.sheets.orders)
-        .filter(row => row.order_id && row.store)
-        .map(row => ({
-          order_id: String(row.order_id || "").trim(),
-          created_at: String(row.created_at || "").trim(),
+      const rawOrders = getSheetRows_(CONFIG.sheets.orders)
+        .filter(row => row.store);
+
+      const orders = rawOrders.map((row, index) => {
+        const items = extractOrderItems_(row);
+        const totals = items.reduce(
+          (acc, item) => {
+            acc.itemCount += 1;
+            acc.totalQty += Number(item.qty || 0);
+            return acc;
+          },
+          { itemCount: 0, totalQty: 0 }
+        );
+
+        return {
+          order_id: `row_${index + 2}`,
+          created_at: String(row.date || "").trim(),
           store: String(row.store || "").trim(),
           placed_by: String(row.placed_by || "").trim(),
           email: String(row.email || "").trim(),
-          requested_date: String(row.requested_date || "").trim(),
           notes: String(row.notes || "").trim(),
-          item_count: row.item_count || "",
-          total_qty: row.total_qty || "",
-        }));
+          item_count: totals.itemCount,
+          total_qty: totals.totalQty,
+        };
+      });
 
-      const items = getSheetRows_(CONFIG.sheets.orderItems)
-        .filter(row => row.order_id && row.sku)
-        .map(row => ({
-          order_id: String(row.order_id || "").trim(),
-          item_no: String(row.item_no || "").trim(),
-          sku: String(row.sku || "").trim(),
-          name: String(row.name || "").trim(),
-          category: String(row.category || "").trim(),
-          unit: String(row.unit || "").trim(),
-          pack_size: String(row.pack_size || "").trim(),
-          qty: row.qty || "",
-        }));
+      const items = rawOrders.flatMap((row, index) => (
+        extractOrderItems_(row).map(item => ({
+          order_id: `row_${index + 2}`,
+          name: item.name,
+          qty: item.qty,
+        }))
+      ));
 
       return jsonResponse({
         ok: true,
