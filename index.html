@@ -7,14 +7,15 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <section class="home" id="homeScreen">
-    <div class="home__card">
-      <div class="home__title">RETAIL ORDERS</div>
-      <div class="home__menu">
-        <button class="btn btn--primary" id="homeOrder" type="button">Order Products</button>
-        <button class="btn" id="homeDrivers" type="button">Drivers</button>
-        <button class="btn" id="homeHistory" type="button">History</button>
-        <button class="btn" id="homeReports" type="button">Reports</button>
+  <header class="topbar">
+    <div class="topbar__row">
+      <div>
+        <div class="title">Retail Order</div>
+        <div class="subtitle" id="lastUpdated">Catalog: not loaded</div>
+      </div>
+      <div class="topbar__actions">
+        <a class="btn btn--ghost btn--link" id="driversBtn" href="delivery.html">Drivers</a>
+        <button class="btn btn--ghost" id="refreshBtn" type="button">Refresh Products</button>
       </div>
     </div>
   </section>
@@ -68,12 +69,19 @@
           <input id="email" placeholder="optional" inputmode="email" autocomplete="email" />
         </label>
 
-        <label class="field">
-          <span>Notes</span>
-          <textarea id="notes" rows="2" placeholder="Anything the office should know"></textarea>
-        </label>
+  <main class="container">
+    <section id="todayOrdersCard" class="card">
+      <div class="card__header">
+        <h2>Today's Orders</h2>
+        <span class="hint">Green check marks mean orders are ready for delivery.</span>
       </div>
-    </header>
+      <div id="todayOrdersList" class="stack"></div>
+    </section>
+
+    <section id="wizard" class="card">
+      <div class="pill" id="pillCategory">—</div>
+      <h1 class="productName" id="productName">Load products to begin</h1>
+      <div class="productMeta" id="productMeta"></div>
 
     <main class="container">
       <section id="wizard" class="card">

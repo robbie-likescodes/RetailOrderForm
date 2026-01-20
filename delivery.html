@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Driver Deliveries</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__row">
+      <div>
+        <div class="title">Driver Deliveries</div>
+        <div class="subtitle" id="deliveryDate"></div>
+      </div>
+      <div class="topbar__actions">
+        <a class="btn btn--ghost btn--link" href="index.html">Back to Orders</a>
+        <button class="btn btn--primary btn--big" id="deliveryRefreshBtn" type="button">Refresh</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <div class="card__header">
+        <h2>Today's Orders</h2>
+        <span class="hint">Check items as they are pulled or mark them unavailable.</span>
+      </div>
+      <div id="deliveryOrders" class="deliveryList"></div>
+    </section>
+  </main>
+
+  <script src="delivery.js"></script>
+</body>
+</html>
