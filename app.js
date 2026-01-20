@@ -75,6 +75,14 @@ const CACHE = {
 // =========================
 const $ = (id) => document.getElementById(id);
 const ui = {
+  homeScreen: $("homeScreen"),
+  orderApp: $("orderApp"),
+  menuToggle: $("menuToggle"),
+  menuList: $("menuList"),
+  menuOrder: $("menuOrder"),
+  menuDrivers: $("menuDrivers"),
+  menuHistory: $("menuHistory"),
+  menuReports: $("menuReports"),
   lastUpdated: $("lastUpdated"),
   refreshBtn: $("refreshBtn"),
   store: $("store"),
@@ -199,6 +207,22 @@ function showSubmitError(msg) {
 function showSubmitSuccess(msg) {
   setHidden(ui.submitSuccess, !msg);
   setText(ui.submitSuccess, msg || "");
+}
+
+function showHome() {
+  setHidden(ui.homeScreen, false);
+  setHidden(ui.orderApp, true);
+  if (ui.menuToggle) ui.menuToggle.setAttribute("aria-expanded", "false");
+  setHidden(ui.menuList, true);
+  window.scrollTo({ top: 0, behavior: "instant" });
+}
+
+function showOrderApp() {
+  setHidden(ui.homeScreen, true);
+  setHidden(ui.orderApp, false);
+  if (ui.menuToggle) ui.menuToggle.setAttribute("aria-expanded", "false");
+  setHidden(ui.menuList, true);
+  window.scrollTo({ top: 0, behavior: "instant" });
 }
 
 function isFiniteInt(n) {
@@ -892,6 +916,29 @@ async function submitOrder() {
 // EVENTS
 // =========================
 function wireEvents() {
+  ui.menuToggle?.addEventListener("click", () => {
+    if (!ui.menuList) return;
+    const isHidden = ui.menuList.hidden;
+    setHidden(ui.menuList, !isHidden);
+    ui.menuToggle?.setAttribute("aria-expanded", String(isHidden));
+  });
+
+  ui.menuOrder?.addEventListener("click", () => {
+    showOrderApp();
+  });
+
+  ui.menuDrivers?.addEventListener("click", () => {
+    alert("Drivers view coming soon.");
+  });
+
+  ui.menuHistory?.addEventListener("click", () => {
+    window.location.href = "history.html";
+  });
+
+  ui.menuReports?.addEventListener("click", () => {
+    alert("Reports view coming soon.");
+  });
+
   ui.refreshBtn?.addEventListener("click", () => refreshCatalog());
 
   ui.nextBtn?.addEventListener("click", goNext);
@@ -945,6 +992,7 @@ function init() {
   wireEvents();
   updateNetStatus();
   renderWizard();
+  showHome();
 
   // If store is locked by URL param, keep it locked
   if (STORE_LOCK && ui.store) {
