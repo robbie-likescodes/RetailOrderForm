@@ -34,6 +34,7 @@ const CONFIG = {
 
   // POST URL is the same /exec (Apps Script doPost)
   POST_ORDER: () => `${CONFIG.SCRIPT_URL}`,
+  GET_ORDERS: (t) => `${CONFIG.SCRIPT_URL}?action=orders&t=${t}`,
 
   // Behavior
   CACHE_TTL_MS: 1000 * 60 * 60 * 12, // 12 hours (soft)
@@ -70,6 +71,7 @@ const CACHE = {
   META: "orderportal_meta_v2",
   POSITION: "orderportal_position_v2",
   ORDERS: "orderportal_orders_v1",
+  ORDERS_UPDATED_AT: "orderportal_orders_updated_at_v1",
 };
 
 // =========================
@@ -99,17 +101,19 @@ const ui = {
   email: $("email"),
   notes: $("notes"),
 
+  orderPanel: $("orderPanel"),
+  wizard: $("wizard"),
   review: $("review"),
+  reportsPanel: $("reports"),
 
-  catalog: $("catalog"),
-  items: $("items"),
-  categoryList: $("categoryList"),
-  itemList: $("itemList"),
-  selectedSummary: $("selectedSummary"),
-  itemsSummary: $("itemsSummary"),
-  categoryTitle: $("categoryTitle"),
-  categoryMeta: $("categoryMeta"),
-  backToCategories: $("backToCategories"),
+  pillCategory: $("pillCategory"),
+  productName: $("productName"),
+  productMeta: $("productMeta"),
+  qtyInput: $("qtyInput"),
+  progressText: $("progressText"),
+  selectedText: $("selectedText"),
+  backBtn: $("backBtn"),
+  nextBtn: $("nextBtn"),
   reviewBtn: $("reviewBtn"),
   errorBox: $("errorBox"),
 
@@ -124,6 +128,9 @@ const ui = {
   netStatus: $("netStatus"),
 
   reportHistoryCount: $("reportHistoryCount"),
+  reportStatus: $("reportStatus"),
+  reportTopStore: $("reportTopStore"),
+  refreshReportsBtn: $("refreshReportsBtn"),
   reportProduct: $("reportProduct"),
   reportStore: $("reportStore"),
   reportDay: $("reportDay"),
@@ -147,7 +154,8 @@ const state = {
   steps: [],        // flattened ordered products
   idx: 0,           // current step index
   quantities: {},   // sku -> qty number
-  selectedCategory: "",
+  orders: [],
+  ordersUpdatedAt: "",
   meta: {
     store: "",
     requested_date: "",
@@ -214,6 +222,33 @@ function normalizeRowKeys(row) {
     if (normalized) acc[normalized] = row[key];
     return acc;
   }, {});
+}
+
+function normalizeOrderRows(rows) {
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row) => {
+    const normalized = normalizeRowKeys(row);
+    const items = Array.isArray(row.items) ? row.items : normalized.items;
+    const normalizedItems = Array.isArray(items)
+      ? items.map((item) => {
+        const normalizedItem = normalizeRowKeys(item);
+        return {
+          sku: normalizedItem.sku || item.sku || "",
+          item_no: normalizedItem.item_no || item.item_no || "",
+          name: normalizedItem.name || item.name || "",
+          qty: Number(normalizedItem.qty ?? item.qty ?? 0) || 0,
+        };
+      })
+      : [];
+    return {
+      id: normalized.id || row.id || `remote-${Math.random().toString(36).slice(2)}`,
+      store: normalized.store || row.store || "",
+      requested_date: normalized.requested_date || row.requested_date || "",
+      placed_by: normalized.placed_by || row.placed_by || "",
+      items: normalizedItems,
+      created_at: normalized.created_at || row.created_at || "",
+    };
+  });
 }
 
 function setText(el, txt) {
@@ -294,6 +329,7 @@ function loadCache() {
   const meta = safeJsonParse(localStorage.getItem(CACHE.META) || "{}", {});
   const pos = safeJsonParse(localStorage.getItem(CACHE.POSITION) || "{}", {});
   const orders = safeJsonParse(localStorage.getItem(CACHE.ORDERS) || "[]", []);
+  const ordersUpdatedAt = localStorage.getItem(CACHE.ORDERS_UPDATED_AT) || "";
   const updatedAt = localStorage.getItem(CACHE.UPDATED_AT) || "";
   const cachedAt = localStorage.getItem(CACHE.CACHED_AT) || "";
 
@@ -301,6 +337,7 @@ function loadCache() {
   if (Array.isArray(prods) && prods.length) state.products = prods;
   if (qtys && typeof qtys === "object") state.quantities = qtys;
   if (Array.isArray(orders)) state.orders = orders;
+  state.ordersUpdatedAt = ordersUpdatedAt;
   state.meta = { ...state.meta, ...(meta || {}) };
   state.meta = {
     store: state.meta.store || "",
@@ -875,15 +912,8 @@ async function refreshCatalog({ force = false } = {}) {
     setText(ui.lastUpdated, `Catalog: ${new Date(iso).toLocaleString()}`);
 
     saveCache();
-    if (state.selectedCategory) {
-      const hasCategory = state.steps.some(item => item.category === state.selectedCategory);
-      if (!hasCategory) state.selectedCategory = "";
-    }
-    if (state.selectedCategory) {
-      showItems();
-    } else {
-      showCatalog();
-    }
+    updateReportOptions();
+    renderWizard();
     state.dirty = false;
 
   } catch (err) {
@@ -910,6 +940,50 @@ function updateNetStatus() {
 // =========================
 // REPORTS
 // =========================
+function setReportStatus(message) {
+  if (!ui.reportStatus) return;
+  ui.reportStatus.textContent = message;
+}
+
+async function refreshReports({ force = false } = {}) {
+  if (!CONFIG.SCRIPT_URL || CONFIG.SCRIPT_URL.includes("PASTE_")) {
+    setReportStatus("History: unavailable (missing Apps Script URL).");
+    return;
+  }
+
+  if (!navigator.onLine && !force) {
+    setReportStatus("History: offline, using cached data.");
+    return;
+  }
+
+  if (ui.refreshReportsBtn) {
+    ui.refreshReportsBtn.disabled = true;
+    ui.refreshReportsBtn.textContent = "Refreshing...";
+  }
+
+  try {
+    const t = Date.now();
+    const ordersResp = await fetchJson(CONFIG.GET_ORDERS(t));
+    if (!ordersResp.ok) throw new Error(ordersResp.error || "Orders endpoint failed");
+    const orders = normalizeOrderRows(ordersResp.orders || []);
+    state.orders = orders;
+    const iso = nowIso();
+    state.ordersUpdatedAt = iso;
+    localStorage.setItem(CACHE.ORDERS, JSON.stringify(state.orders));
+    localStorage.setItem(CACHE.ORDERS_UPDATED_AT, iso);
+    setReportStatus(`History: ${new Date(iso).toLocaleString()}`);
+    updateReportOptions();
+    renderReports();
+  } catch (err) {
+    setReportStatus(`History: using cached data. (${String(err)})`);
+  } finally {
+    if (ui.refreshReportsBtn) {
+      ui.refreshReportsBtn.disabled = false;
+      ui.refreshReportsBtn.textContent = "Refresh Reports";
+    }
+  }
+}
+
 function setActiveTab(tab) {
   state.activeTab = tab === "reports" ? "reports" : "order";
   setHidden(ui.orderPanel, state.activeTab !== "order");
@@ -919,8 +993,16 @@ function setActiveTab(tab) {
   if (ui.reportsTabBtn) ui.reportsTabBtn.classList.toggle("is-active", state.activeTab === "reports");
 
   if (state.activeTab === "reports") {
+    if (state.ordersUpdatedAt) {
+      setReportStatus(`History: ${new Date(state.ordersUpdatedAt).toLocaleString()}`);
+    } else {
+      setReportStatus("History: not loaded");
+    }
     updateReportOptions();
     renderReports();
+    if (!state.orders.length) {
+      refreshReports();
+    }
   }
 }
 
@@ -995,6 +1077,10 @@ function updateReportOptions() {
   if (ui.reportHistoryCount) {
     ui.reportHistoryCount.textContent = String(state.orders.length);
   }
+
+  if (ui.reportTopStore) {
+    ui.reportTopStore.textContent = "—";
+  }
 }
 
 function syncReportFiltersFromInputs() {
@@ -1055,7 +1141,8 @@ function renderReports() {
   if (ui.reportStoreBody) {
     ui.reportStoreBody.innerHTML = "";
     if (showProductTotals && stores.length) {
-      const rows = (store === "all" ? stores : stores.filter((name) => name === store));
+      const rows = (store === "all" ? stores : stores.filter((name) => name === store))
+        .sort((a, b) => (storeTotals.get(b) || 0) - (storeTotals.get(a) || 0));
       rows.forEach((storeName) => {
         const row = document.createElement("tr");
         const nameCell = document.createElement("td");
@@ -1121,12 +1208,21 @@ function renderReports() {
         row.appendChild(qtyCell);
         ui.compareBody.appendChild(row);
       });
+      if (ui.reportTopStore) {
+        const topStore = sortedStores[0];
+        ui.reportTopStore.textContent = topStore
+          ? `${topStore} (${compareTotals.get(topStore) || 0})`
+          : "—";
+      }
     }
   }
 
   setHidden(ui.compareEmpty, compareValid && stores.length);
   if (ui.compareEmpty && !stores.length) {
     ui.compareEmpty.textContent = "No order history yet. Submit orders to populate reports.";
+  }
+  if (ui.reportTopStore && !compareValid) {
+    ui.reportTopStore.textContent = "—";
   }
 }
 
@@ -1376,9 +1472,34 @@ function wireEvents() {
   ui.email?.addEventListener("input", markDirty);
   ui.notes?.addEventListener("input", markDirty);
 
-  // Online/offline indicator
-  window.addEventListener("online", updateNetStatus);
-  window.addEventListener("offline", updateNetStatus);
+  const rerenderReports = () => renderReports();
+  ui.reportProduct?.addEventListener("change", rerenderReports);
+  ui.reportStore?.addEventListener("change", rerenderReports);
+  ui.reportMonth?.addEventListener("change", rerenderReports);
+  ui.reportYear?.addEventListener("change", rerenderReports);
+  ui.reportDay?.addEventListener("change", rerenderReports);
+  ui.compareProduct?.addEventListener("change", rerenderReports);
+  ui.compareStart?.addEventListener("change", rerenderReports);
+  ui.compareEnd?.addEventListener("change", rerenderReports);
+  ui.refreshReportsBtn?.addEventListener("click", () => refreshReports({ force: true }));
+
+  // Optional: category jump toggle
+  ui.categoryJumpBtn?.addEventListener("click", () => {
+    if (!ui.categoryJumpMenu) return;
+    ui.categoryJumpMenu.hidden = !ui.categoryJumpMenu.hidden;
+  });
+
+  window.addEventListener("storage", (event) => {
+    if (event.key === CACHE.ORDERS) {
+      loadOrders();
+      renderTodayOrders();
+    }
+  });
+
+  window.addEventListener("focus", () => {
+    loadOrders();
+    renderTodayOrders();
+  });
 }
 
 // =========================
@@ -1390,7 +1511,12 @@ function init() {
   buildSteps();
   wireEvents();
   updateNetStatus();
-  showCatalog();
+  renderWizard();
+  updateReportOptions();
+  setActiveTab("order");
+  if (state.ordersUpdatedAt) {
+    setReportStatus(`History: ${new Date(state.ordersUpdatedAt).toLocaleString()}`);
+  }
 
   // If store is locked by URL param, keep it locked
   if (STORE_LOCK && ui.store) {
