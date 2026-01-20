@@ -7,6 +7,14 @@ function jsonResponse(payload) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+function normalizeHeader_(header) {
+  return String(header || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s\-]+/g, "_")
+    .replace(/[^\w]/g, "");
+}
+
 function getSheetRows_(sheetName) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(sheetName);
@@ -17,11 +25,11 @@ function getSheetRows_(sheetName) {
   const values = sheet.getDataRange().getValues();
   if (values.length < 2) return [];
 
-  const headers = values[0].map(h => String(h || "").trim());
+  const headers = values[0].map(normalizeHeader_);
   return values.slice(1)
     .filter(row => row.some(cell => String(cell || "").trim() !== ""))
     .map(row => headers.reduce((acc, header, idx) => {
-      acc[header] = row[idx];
+      if (header) acc[header] = row[idx];
       return acc;
     }, {}));
 }
