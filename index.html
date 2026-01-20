@@ -74,6 +74,11 @@
           <span>Email</span>
           <input id="email" placeholder="optional" inputmode="email" autocomplete="email" />
         </label>
+
+        <label class="field">
+          <span>Notes</span>
+          <textarea id="notes" rows="3" placeholder="Optional notes for this order"></textarea>
+        </label>
       </div>
     </header>
 
@@ -86,33 +91,32 @@
       <div id="todayOrdersList" class="stack"></div>
     </section>
 
-    <section id="wizard" class="card">
-      <div class="pill" id="pillCategory">—</div>
-      <h1 class="productName" id="productName">Load products to begin</h1>
-      <div class="productMeta" id="productMeta"></div>
-
-        <label class="field">
-          <span>Quantity (leave blank to skip)</span>
-          <input id="qtyInput" inputmode="numeric" pattern="[0-9]*" placeholder="" />
-        </label>
-
-        <div class="progress">
-          <div id="progressText">—</div>
-          <div id="selectedText">Selected: 0</div>
+    <section id="orderPanel" class="stack">
+      <section id="catalog" class="card catalog">
+        <div class="catalog__header">
+          <div>
+            <h2 class="catalog__title">Select a category</h2>
+            <p class="catalog__hint">Choose a category to browse products and add quantities.</p>
+          </div>
+          <div class="catalog__summary" id="selectedSummary">Selected: 0</div>
         </div>
-
-        <div class="actions">
-          <button class="btn" id="backBtn" type="button">Back</button>
-          <button class="btn btn--primary" id="nextBtn" type="button">Next</button>
-        </div>
-        <div class="catalog__summary" id="selectedSummary">Selected: 0</div>
-      </div>
-      <div id="categoryList" class="categoryGrid"></div>
-    </section>
-
-        <button class="btn btn--full" id="reviewBtn" type="button">Review & Submit</button>
-        <div class="error" id="errorBox" hidden></div>
+        <div id="categoryList" class="categoryGrid"></div>
       </section>
+
+      <section id="items" class="card items" hidden>
+        <div class="items__header">
+          <button class="btn btn--ghost" id="backToCategories" type="button">Back to categories</button>
+          <div class="items__headerText">
+            <h2 id="categoryTitle">Items</h2>
+            <div class="items__meta" id="categoryMeta"></div>
+          </div>
+          <div class="items__summary" id="itemsSummary">Selected: 0</div>
+        </div>
+        <div id="itemList" class="itemList"></div>
+      </section>
+
+      <button class="btn btn--full" id="reviewBtn" type="button">Review & Submit</button>
+      <div class="error" id="errorBox" hidden></div>
 
       <section id="review" class="card" hidden>
         <h2>Review</h2>
