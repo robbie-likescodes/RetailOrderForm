@@ -3,8 +3,7 @@
  * ------------------------------------------------------------
  * Features:
  * - Loads Categories + Products from Google Apps Script (GET)
- * - Wizard “Next/Back” flow with numeric entry + Enter/Done to advance
- * - Optional category jump menu + search
+ * - Category-first mobile flow with fast quantity controls per item
  * - Local cache for offline / fast startup (categories, products, quantities, form meta, position)
  * - “Refresh Products” button with confirmation and graceful fallback to cache
  * - Review screen with inline edits
@@ -12,13 +11,14 @@
  * - Token support via URL ?token=XXXX and optional store lock via ?store=Boniface
  * - Basic input validation and error surfaces
  *
- * Required HTML element IDs expected (matches the earlier index.html):
+ * Required HTML element IDs expected (matches index.html):
  * lastUpdated, refreshBtn, store, requestedDate, placedBy, email, notes,
- * wizard, review, pillCategory, productName, productMeta, qtyInput, progressText, selectedText,
- * backBtn, nextBtn, reviewBtn, errorBox, reviewList, editBtn, submitBtn, submitError, submitSuccess
+ * catalog, items, categoryList, itemList, selectedSummary, itemsSummary,
+ * categoryTitle, categoryMeta, backToCategories, reviewBtn, errorBox,
+ * review, reviewList, editBtn, submitBtn, submitError, submitSuccess
  *
  * Optional extra IDs (if you add them):
- * categoryJumpBtn, categoryJumpMenu, searchInput, netStatus
+ * netStatus
  */
 
 // =========================
@@ -26,7 +26,7 @@
 // =========================
 const CONFIG = {
   // Put your web app URL here (ends with /exec)
-  SCRIPT_URL: "https://script.google.com/macros/s/AKfycbzgkI0hGD6aIdLuUYM8T_MD6XJyfzYBQmdoLW7z8yB2R6Sjh4BI5LHgyg_ybvVisY6K/exec",
+  SCRIPT_URL: "https://script.google.com/macros/s/AKfycbw6ogE8v1_hlV1iCGhPGo0SpDzlzzVYNrjQ8rNk2e7lgQos66GBp_JBazt3_g7H4tCz/exec",
 
   // Endpoints
   GET_CATEGORIES: (t) => `${CONFIG.SCRIPT_URL}?action=categories&t=${t}`,
@@ -55,6 +55,7 @@ const CONFIG = {
 const urlParams = new URLSearchParams(window.location.search);
 const TOKEN = urlParams.get("token") || "";                 // optional shared key / store token
 const STORE_LOCK = urlParams.get("store") || "";            // optional store prefill/lock
+const VIEW = (urlParams.get("view") || "").toLowerCase();
 const DEBUG = (urlParams.get("debug") || "").toLowerCase() === "true";
 
 // =========================
@@ -68,6 +69,7 @@ const CACHE = {
   QUANTITIES: "orderportal_quantities_v2",
   META: "orderportal_meta_v2",
   POSITION: "orderportal_position_v2",
+  ORDERS: "orderportal_orders_v1",
 };
 
 // =========================
@@ -75,25 +77,41 @@ const CACHE = {
 // =========================
 const $ = (id) => document.getElementById(id);
 const ui = {
+  homeScreen: $("homeScreen"),
+  orderApp: $("orderApp"),
+  homeOrder: $("homeOrder"),
+  homeDrivers: $("homeDrivers"),
+  homeHistory: $("homeHistory"),
+  homeReports: $("homeReports"),
+  topMenuToggle: $("topMenuToggle"),
+  topMenuList: $("topMenuList"),
+  topMenuOrder: $("topMenuOrder"),
+  topMenuDrivers: $("topMenuDrivers"),
+  topMenuHistory: $("topMenuHistory"),
+  topMenuReports: $("topMenuReports"),
   lastUpdated: $("lastUpdated"),
   refreshBtn: $("refreshBtn"),
+  orderTabBtn: $("orderTabBtn"),
+  reportsTabBtn: $("reportsTabBtn"),
   store: $("store"),
   requestedDate: $("requestedDate"),
   placedBy: $("placedBy"),
   email: $("email"),
   notes: $("notes"),
 
-  wizard: $("wizard"),
   review: $("review"),
+  reportsPanel: $("reports"),
+  orderPanel: $("orderPanel"),
 
-  pillCategory: $("pillCategory"),
-  productName: $("productName"),
-  productMeta: $("productMeta"),
-  qtyInput: $("qtyInput"),
-  progressText: $("progressText"),
-  selectedText: $("selectedText"),
-  backBtn: $("backBtn"),
-  nextBtn: $("nextBtn"),
+  catalog: $("catalog"),
+  items: $("items"),
+  categoryList: $("categoryList"),
+  itemList: $("itemList"),
+  selectedSummary: $("selectedSummary"),
+  itemsSummary: $("itemsSummary"),
+  categoryTitle: $("categoryTitle"),
+  categoryMeta: $("categoryMeta"),
+  backToCategories: $("backToCategories"),
   reviewBtn: $("reviewBtn"),
   errorBox: $("errorBox"),
 
@@ -102,12 +120,24 @@ const ui = {
   submitBtn: $("submitBtn"),
   submitError: $("submitError"),
   submitSuccess: $("submitSuccess"),
+  todayOrdersList: $("todayOrdersList"),
 
   // Optional extras
-  categoryJumpBtn: $("categoryJumpBtn"),
-  categoryJumpMenu: $("categoryJumpMenu"),
-  searchInput: $("searchInput"),
   netStatus: $("netStatus"),
+
+  reportHistoryCount: $("reportHistoryCount"),
+  reportProduct: $("reportProduct"),
+  reportStore: $("reportStore"),
+  reportDay: $("reportDay"),
+  reportMonth: $("reportMonth"),
+  reportYear: $("reportYear"),
+  reportStoreBody: $("reportStoreBody"),
+  reportStoreEmpty: $("reportStoreEmpty"),
+  compareProduct: $("compareProduct"),
+  compareStart: $("compareStart"),
+  compareEnd: $("compareEnd"),
+  compareBody: $("compareBody"),
+  compareEmpty: $("compareEmpty"),
 };
 
 // =========================
@@ -119,6 +149,7 @@ const state = {
   steps: [],        // flattened ordered products
   idx: 0,           // current step index
   quantities: {},   // sku -> qty number
+  selectedCategory: "",
   meta: {
     store: "",
     requested_date: "",
@@ -130,6 +161,17 @@ const state = {
   lastCatalogIso: "", // when refreshed
   lastCacheIso: "",   // when cached
   categoryIndex: new Map(), // category -> {start, end}
+  activeTab: "order",
+  reports: {
+    product: "",
+    store: "all",
+    day: "",
+    month: "",
+    year: "",
+    compareProduct: "",
+    compareStart: "",
+    compareEnd: "",
+  },
 };
 
 // =========================
@@ -201,8 +243,45 @@ function showSubmitSuccess(msg) {
   setText(ui.submitSuccess, msg || "");
 }
 
+function showHome() {
+  setHidden(ui.homeScreen, false);
+  setHidden(ui.orderApp, true);
+  if (ui.topMenuToggle) ui.topMenuToggle.setAttribute("aria-expanded", "false");
+  setHidden(ui.topMenuList, true);
+  window.scrollTo({ top: 0, behavior: "instant" });
+}
+
+function showOrderApp() {
+  setHidden(ui.homeScreen, true);
+  setHidden(ui.orderApp, false);
+  if (ui.topMenuToggle) ui.topMenuToggle.setAttribute("aria-expanded", "false");
+  setHidden(ui.topMenuList, true);
+  window.scrollTo({ top: 0, behavior: "instant" });
+}
+
 function isFiniteInt(n) {
   return Number.isFinite(n) && Math.floor(n) === n;
+}
+
+function parseDateValue(value) {
+  if (!value) return null;
+  const [year, month, day] = String(value).split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day);
+}
+
+function isSameDay(a, b) {
+  return a && b
+    && a.getFullYear() === b.getFullYear()
+    && a.getMonth() === b.getMonth()
+    && a.getDate() === b.getDate();
+}
+
+function isWithinRange(date, start, end) {
+  if (!date) return false;
+  if (start && date < start) return false;
+  if (end && date > end) return false;
+  return true;
 }
 
 // iOS: avoid zoom: ensure input font-size >= 16 in CSS, already done.
@@ -216,12 +295,14 @@ function loadCache() {
   const qtys = safeJsonParse(localStorage.getItem(CACHE.QUANTITIES) || "{}", {});
   const meta = safeJsonParse(localStorage.getItem(CACHE.META) || "{}", {});
   const pos = safeJsonParse(localStorage.getItem(CACHE.POSITION) || "{}", {});
+  const orders = safeJsonParse(localStorage.getItem(CACHE.ORDERS) || "[]", []);
   const updatedAt = localStorage.getItem(CACHE.UPDATED_AT) || "";
   const cachedAt = localStorage.getItem(CACHE.CACHED_AT) || "";
 
   if (Array.isArray(cats) && cats.length) state.categories = cats;
   if (Array.isArray(prods) && prods.length) state.products = prods;
   if (qtys && typeof qtys === "object") state.quantities = qtys;
+  if (Array.isArray(orders)) state.orders = orders;
   state.meta = { ...state.meta, ...(meta || {}) };
   state.meta = {
     store: state.meta.store || "",
@@ -249,6 +330,78 @@ function loadCache() {
   if (!state.meta.requested_date) state.meta.requested_date = todayDateValue();
 
   hydrateMetaInputs();
+}
+
+function loadOrders() {
+  const orders = safeJsonParse(localStorage.getItem(CACHE.ORDERS) || "[]", []);
+  state.orders = Array.isArray(orders) ? orders : [];
+}
+
+function saveOrders() {
+  localStorage.setItem(CACHE.ORDERS, JSON.stringify(state.orders));
+}
+
+function todayOrders() {
+  const today = todayDateValue();
+  return state.orders.filter((order) => order.requested_date === today);
+}
+
+function renderTodayOrders() {
+  if (!ui.todayOrdersList) return;
+  const orders = todayOrders();
+  ui.todayOrdersList.innerHTML = "";
+
+  if (orders.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "emptyState";
+    empty.textContent = "No orders placed yet for today.";
+    ui.todayOrdersList.appendChild(empty);
+    return;
+  }
+
+  orders.forEach((order) => {
+    const row = document.createElement("div");
+    row.className = "orderRow";
+
+    const details = document.createElement("div");
+    details.className = "orderRow__details";
+    details.innerHTML = `
+      <div class="orderRow__title">${escapeHtml(order.store || "Unknown Store")}</div>
+      <div class="orderRow__meta">${escapeHtml(order.placed_by || "Unknown")}</div>
+    `;
+
+    const status = document.createElement("div");
+    const ready = order.delivery?.status === "ready";
+    status.className = ready ? "statusBadge" : "statusBadge statusBadge--pending";
+    status.textContent = ready ? "✓ Ready for delivery" : "In progress";
+
+    row.appendChild(details);
+    row.appendChild(status);
+    ui.todayOrdersList.appendChild(row);
+  });
+}
+
+function createLocalOrderRecord(payload, items) {
+  const id = `local-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  return {
+    id,
+    store: payload.store,
+    placed_by: payload.placed_by,
+    requested_date: payload.requested_date,
+    notes: payload.notes || "",
+    created_at: nowIso(),
+    items: items.map((item) => ({ ...item })),
+    delivery: {
+      status: "pending",
+      items: {},
+    },
+  };
+}
+
+function storeLocalOrder(order) {
+  state.orders.unshift(order);
+  saveOrders();
+  renderTodayOrders();
 }
 
 function saveCache() {
@@ -391,7 +544,7 @@ function buildSteps() {
   // Clamp idx
   state.idx = Math.max(0, Math.min(state.idx, Math.max(0, state.steps.length - 1)));
 
-  renderCategoryJumpMenu();
+  renderCategories();
 }
 
 // =========================
@@ -405,214 +558,162 @@ function countSelected() {
   return n;
 }
 
-function getCurrent() {
-  return state.steps[state.idx] || null;
+function getQty(sku) {
+  return Number(state.quantities[sku]) || 0;
 }
 
-function commitQty() {
-  const step = getCurrent();
-  if (!step) return true;
-
-  const raw = (ui.qtyInput?.value || "").trim();
-  if (raw === "") {
-    if (state.quantities[step.sku] !== undefined) {
-      delete state.quantities[step.sku];
-      state.dirty = true;
-    }
-    saveCache();
-    return true;
-  }
-
-  const num = Number(raw);
-  if (!Number.isFinite(num)) {
-    showError("Quantity must be a number.");
-    return false;
-  }
-  const qty = Math.floor(num);
-  if (qty < 0) {
-    showError("Quantity must be 0 or greater.");
-    return false;
-  }
-  if (qty > CONFIG.MAX_QTY) {
-    showError(`Quantity is too large (max ${CONFIG.MAX_QTY}).`);
-    return false;
-  }
-
-  if (qty === 0) {
-    if (state.quantities[step.sku] !== undefined) {
-      delete state.quantities[step.sku];
+function setQty(sku, qty) {
+  if (!sku) return;
+  if (!Number.isFinite(qty) || qty < 0) return;
+  const clamped = Math.min(Math.floor(qty), CONFIG.MAX_QTY);
+  if (clamped <= 0) {
+    if (state.quantities[sku] !== undefined) {
+      delete state.quantities[sku];
       state.dirty = true;
     }
   } else {
-    if (state.quantities[step.sku] !== qty) {
-      state.quantities[step.sku] = qty;
+    if (state.quantities[sku] !== clamped) {
+      state.quantities[sku] = clamped;
       state.dirty = true;
     }
   }
-
   saveCache();
-  return true;
+  renderSelectedSummary();
 }
 
-function setQtyFocus() {
-  if (!CONFIG.AUTOFOCUS_QTY) return;
-  if (!ui.qtyInput) return;
-  ui.qtyInput.focus();
-  ui.qtyInput.select?.();
+function parseQtyInput(raw) {
+  const trimmed = String(raw || "").trim();
+  if (trimmed === "") return null;
+  const num = Number(trimmed);
+  if (!Number.isFinite(num)) return null;
+  return Math.min(Math.floor(num), CONFIG.MAX_QTY);
 }
 
 // =========================
-// RENDER: WIZARD
+// RENDER: CATALOG / ITEMS
 // =========================
-function renderWizard() {
-  showError("");
+function renderSelectedSummary() {
+  const label = `Selected: ${countSelected()}`;
+  setText(ui.selectedSummary, label);
+  setText(ui.itemsSummary, label);
+}
 
-  const step = getCurrent();
-  if (!step) {
-    setText(ui.pillCategory, "—");
-    setText(ui.productName, "No products loaded");
-    setText(ui.productMeta, "Tap Refresh to load your catalog.");
-    if (ui.qtyInput) ui.qtyInput.value = "";
-    setText(ui.progressText, "—");
-    setText(ui.selectedText, `Selected: ${countSelected()}`);
-    if (ui.backBtn) ui.backBtn.disabled = true;
+function renderCategories() {
+  if (!ui.categoryList) return;
+  ui.categoryList.innerHTML = "";
+
+  if (!state.steps.length) {
+    ui.categoryList.innerHTML = `<div class="categoryCard" aria-disabled="true">
+      <div>No products loaded</div>
+      <div class="categoryCard__meta">Tap refresh to load your catalog.</div>
+    </div>`;
+    renderSelectedSummary();
     return;
   }
 
-  // Category display name
-  const catRow = state.categories.find(c => c.category === step.category);
-  const catLabel = catRow?.display_name || step.category;
+  const counts = new Map();
+  state.steps.forEach(p => {
+    counts.set(p.category, (counts.get(p.category) || 0) + 1);
+  });
 
-  setText(ui.pillCategory, catLabel);
-  setText(ui.productName, step.name);
+  const orderedCategories = state.categories.length
+    ? state.categories.map(c => c.category)
+    : [...new Set(state.steps.map(p => p.category))];
 
-  const metaParts = [];
-  if (step.item_no) metaParts.push(step.item_no);
-  if (step.unit) metaParts.push(step.unit);
-  if (step.pack_size) metaParts.push(step.pack_size);
-  setText(ui.productMeta, metaParts.join(" • "));
+  orderedCategories.forEach(category => {
+    const itemCount = counts.get(category) || 0;
+    if (!itemCount && CONFIG.HIDE_EMPTY_CATEGORIES) return;
+    const catRow = state.categories.find(c => c.category === category);
+    const label = catRow?.display_name || category;
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "categoryCard";
+    card.innerHTML = `
+      <div>${escapeHtml(label)}</div>
+      <div class="categoryCard__meta">${itemCount} item${itemCount === 1 ? "" : "s"}</div>
+    `;
+    card.addEventListener("click", () => {
+      state.selectedCategory = category;
+      showItems();
+    });
+    ui.categoryList.appendChild(card);
+  });
 
-  const existing = state.quantities[step.sku];
-  if (ui.qtyInput) ui.qtyInput.value = existing ? String(existing) : "";
-
-  // Progress: overall + category
-  const overall = `Item ${state.idx + 1} of ${state.steps.length}`;
-  const range = state.categoryIndex.get(step.category);
-  let catProgress = "";
-  if (range) {
-    const within = state.idx - range.start + 1;
-    const total = range.end - range.start + 1;
-    catProgress = ` • ${catLabel} ${within}/${total}`;
-  }
-  setText(ui.progressText, overall + catProgress);
-
-  setText(ui.selectedText, `Selected: ${countSelected()}`);
-  if (ui.backBtn) ui.backBtn.disabled = state.idx === 0;
-
-  saveCache();
-  setQtyFocus();
+  renderSelectedSummary();
 }
 
-// =========================
-// RENDER: CATEGORY JUMP MENU (optional)
-// =========================
-function renderCategoryJumpMenu() {
-  if (!ui.categoryJumpMenu) return;
+function renderItems() {
+  if (!ui.itemList) return;
+  const category = state.selectedCategory;
+  const catRow = state.categories.find(c => c.category === category);
+  const label = catRow?.display_name || category || "Items";
 
-  // Build menu items from current steps order (unique in order)
-  const seen = new Set();
-  const catsInOrder = [];
-  for (const p of state.steps) {
-    if (!seen.has(p.category)) {
-      seen.add(p.category);
-      const row = state.categories.find(c => c.category === p.category);
-      catsInOrder.push({ category: p.category, label: row?.display_name || p.category });
-    }
+  setText(ui.categoryTitle, label);
+
+  const items = state.steps.filter(p => p.category === category);
+  setText(ui.categoryMeta, `${items.length} item${items.length === 1 ? "" : "s"}`);
+
+  ui.itemList.innerHTML = "";
+
+  if (!items.length) {
+    ui.itemList.innerHTML = `<div class="itemCard">
+      <div class="itemCard__name">No items found</div>
+      <div class="itemCard__meta">Pick another category.</div>
+    </div>`;
+    renderSelectedSummary();
+    return;
   }
 
-  ui.categoryJumpMenu.innerHTML = "";
-  for (const c of catsInOrder) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "btn"; // you can style smaller if desired
-    btn.style.height = "44px";
-    btn.textContent = c.label;
-    btn.addEventListener("click", () => jumpToCategory(c.category));
-    ui.categoryJumpMenu.appendChild(btn);
-  }
-}
+  items.forEach(item => {
+    const metaParts = [item.item_no, item.unit, item.pack_size].filter(Boolean);
+    const qty = getQty(item.sku);
+    const card = document.createElement("div");
+    card.className = "itemCard";
+    card.innerHTML = `
+      <div>
+        <div class="itemCard__name">${escapeHtml(item.name)}</div>
+        <div class="itemCard__meta">${escapeHtml(metaParts.join(" • "))}</div>
+      </div>
+      <div class="qtyControl" data-sku="${escapeHtml(item.sku)}">
+        <button class="qtyBtn" type="button" data-action="decrement">−</button>
+        <input class="qtyInput" inputmode="numeric" pattern="[0-9]*" value="${qty ? qty : ""}" />
+        <button class="qtyBtn" type="button" data-action="increment">+</button>
+      </div>
+    `;
+    ui.itemList.appendChild(card);
+  });
 
-function jumpToCategory(category) {
-  const range = state.categoryIndex.get(category);
-  if (!range) return;
-  if (!commitQty()) return;
-  state.idx = range.start;
-  saveCache();
-  renderWizard();
-  if (ui.categoryJumpMenu) ui.categoryJumpMenu.hidden = true;
-}
-
-// =========================
-// SEARCH (optional)
-// =========================
-function searchAndJump(query) {
-  const q = String(query || "").trim().toLowerCase();
-  if (!q) return;
-
-  // Find next match starting from current+1, wrap around
-  const n = state.steps.length;
-  if (!n) return;
-
-  const start = (state.idx + 1) % n;
-  let i = start;
-
-  do {
-    const p = state.steps[i];
-    const hay = `${p.name} ${p.sku} ${p.item_no} ${p.category}`.toLowerCase();
-    if (hay.includes(q)) {
-      if (!commitQty()) return;
-      state.idx = i;
-      saveCache();
-      renderWizard();
-      return;
-    }
-    i = (i + 1) % n;
-  } while (i !== start);
-
-  showError(`No match for “${query}”.`);
+  renderSelectedSummary();
 }
 
 // =========================
 // NAVIGATION
 // =========================
-function goNext() {
-  if (!commitQty()) return;
-  if (state.idx < state.steps.length - 1) {
-    state.idx++;
-    saveCache();
-    renderWizard();
-  } else {
-    showReview();
-  }
+function showCatalog() {
+  setHidden(ui.items, true);
+  setHidden(ui.review, true);
+  setHidden(ui.catalog, false);
+  renderCategories();
 }
 
-function goBack() {
-  if (!commitQty()) return;
-  if (state.idx > 0) {
-    state.idx--;
-    saveCache();
-    renderWizard();
+function showItems() {
+  if (!state.selectedCategory) {
+    showCatalog();
+    return;
   }
+  setHidden(ui.catalog, true);
+  setHidden(ui.review, true);
+  setHidden(ui.items, false);
+  renderItems();
 }
 
 function showReview() {
-  if (!commitQty()) return;
-
   syncMetaFromInputs();
   showSubmitError("");
   showSubmitSuccess("");
 
-  setHidden(ui.wizard, true);
+  setHidden(ui.catalog, true);
+  setHidden(ui.items, true);
   setHidden(ui.review, false);
 
   const selected = state.steps
@@ -684,10 +785,14 @@ function backToWizard() {
 
   saveCache();
   state.dirty = true;
+  renderSelectedSummary();
 
   setHidden(ui.review, true);
-  setHidden(ui.wizard, false);
-  renderWizard();
+  if (state.selectedCategory) {
+    showItems();
+  } else {
+    showCatalog();
+  }
 }
 
 // =========================
@@ -766,13 +871,25 @@ async function refreshCatalog({ force = false } = {}) {
     setText(ui.lastUpdated, `Catalog: ${new Date(iso).toLocaleString()}`);
 
     saveCache();
-    renderWizard();
+    if (state.selectedCategory) {
+      const hasCategory = state.steps.some(item => item.category === state.selectedCategory);
+      if (!hasCategory) state.selectedCategory = "";
+    }
+    if (state.selectedCategory) {
+      showItems();
+    } else {
+      showCatalog();
+    }
     state.dirty = false;
 
   } catch (err) {
     showError(`Could not refresh. Using cached data if available. (${String(err)})`);
     buildSteps();
-    renderWizard();
+    if (state.selectedCategory) {
+      showItems();
+    } else {
+      showCatalog();
+    }
   } finally {
     ui.refreshBtn.disabled = false;
     ui.refreshBtn.textContent = "Refresh";
@@ -784,6 +901,244 @@ function updateNetStatus() {
   const online = navigator.onLine;
   ui.netStatus.textContent = online ? "Online" : "Offline";
   ui.netStatus.style.opacity = online ? "0.7" : "1";
+}
+
+// =========================
+// REPORTS
+// =========================
+function setActiveTab(tab) {
+  state.activeTab = tab === "reports" ? "reports" : "order";
+  setHidden(ui.orderPanel, state.activeTab !== "order");
+  setHidden(ui.reportsPanel, state.activeTab !== "reports");
+
+  if (ui.orderTabBtn) ui.orderTabBtn.classList.toggle("is-active", state.activeTab === "order");
+  if (ui.reportsTabBtn) ui.reportsTabBtn.classList.toggle("is-active", state.activeTab === "reports");
+
+  if (state.activeTab === "reports") {
+    updateReportOptions();
+    renderReports();
+  }
+}
+
+function normalizeProductKey(value) {
+  return String(value || "").trim();
+}
+
+function buildSelectOptions(select, options, selectedValue) {
+  if (!select) return;
+  select.innerHTML = "";
+  options.forEach((option) => {
+    const el = document.createElement("option");
+    el.value = option.value;
+    el.textContent = option.label;
+    select.appendChild(el);
+  });
+  if (selectedValue !== undefined && selectedValue !== null) {
+    select.value = selectedValue;
+  }
+}
+
+function getStoreList() {
+  const stores = new Set(CONFIG.STORES || []);
+  state.orders.forEach((order) => {
+    if (order && order.store) stores.add(order.store);
+  });
+  return Array.from(stores).sort((a, b) => a.localeCompare(b));
+}
+
+function getProductMap() {
+  const map = new Map();
+  state.products.forEach((product) => {
+    const key = product.sku || product.item_no || product.name;
+    if (!key) return;
+    map.set(key, product.name || product.sku || key);
+  });
+  state.orders.forEach((order) => {
+    (order.items || []).forEach((item) => {
+      const key = item.sku || item.item_no || item.name;
+      if (!key || map.has(key)) return;
+      map.set(key, item.name || key);
+    });
+  });
+  return map;
+}
+
+function updateReportOptions() {
+  const stores = getStoreList();
+  buildSelectOptions(
+    ui.reportStore,
+    [{ value: "all", label: "All stores" }, ...stores.map((store) => ({ value: store, label: store }))],
+    state.reports.store
+  );
+
+  const productMap = getProductMap();
+  const productOptions = [{ value: "", label: "Select a product" }];
+  productMap.forEach((label, value) => productOptions.push({ value, label }));
+  buildSelectOptions(ui.reportProduct, productOptions, state.reports.product);
+  buildSelectOptions(ui.compareProduct, productOptions, state.reports.compareProduct);
+
+  const years = new Set();
+  state.orders.forEach((order) => {
+    const date = parseDateValue(order.requested_date);
+    if (date) years.add(date.getFullYear());
+  });
+  const yearOptions = [{ value: "", label: "All years" }];
+  Array.from(years).sort((a, b) => b - a).forEach((year) => {
+    yearOptions.push({ value: String(year), label: String(year) });
+  });
+  buildSelectOptions(ui.reportYear, yearOptions, state.reports.year);
+
+  if (ui.reportHistoryCount) {
+    ui.reportHistoryCount.textContent = String(state.orders.length);
+  }
+}
+
+function syncReportFiltersFromInputs() {
+  if (!ui.reportProduct) return;
+  state.reports.product = normalizeProductKey(ui.reportProduct.value);
+  state.reports.store = ui.reportStore?.value || "all";
+  state.reports.day = ui.reportDay?.value || "";
+  state.reports.month = ui.reportMonth?.value || "";
+  state.reports.year = ui.reportYear?.value || "";
+  state.reports.compareProduct = normalizeProductKey(ui.compareProduct?.value);
+  state.reports.compareStart = ui.compareStart?.value || "";
+  state.reports.compareEnd = ui.compareEnd?.value || "";
+}
+
+function passesDateFilters(orderDate, filters) {
+  if (!orderDate) return false;
+  const dayDate = parseDateValue(filters.day);
+  if (dayDate) return isSameDay(orderDate, dayDate);
+
+  const monthNum = filters.month ? Number(filters.month) : null;
+  const yearNum = filters.year ? Number(filters.year) : null;
+  if (yearNum && orderDate.getFullYear() !== yearNum) return false;
+  if (monthNum && orderDate.getMonth() + 1 !== monthNum) return false;
+  return true;
+}
+
+function itemMatchesProduct(item, productKey) {
+  if (!productKey) return false;
+  return item.sku === productKey || item.item_no === productKey || item.name === productKey;
+}
+
+function renderReports() {
+  if (!ui.reportsPanel) return;
+  syncReportFiltersFromInputs();
+
+  const { product, store, day, month, year } = state.reports;
+  const storeTotals = new Map();
+  const stores = getStoreList();
+  stores.forEach((storeName) => storeTotals.set(storeName, 0));
+
+  const showProductTotals = !!product;
+  if (showProductTotals) {
+    state.orders.forEach((order) => {
+      if (!order || !order.requested_date) return;
+      const orderDate = parseDateValue(order.requested_date);
+      if (!passesDateFilters(orderDate, { day, month, year })) return;
+      if (store !== "all" && order.store !== store) return;
+
+      (order.items || []).forEach((item) => {
+        if (!itemMatchesProduct(item, product)) return;
+        const current = storeTotals.get(order.store) || 0;
+        const qty = Number(item.qty) || 0;
+        storeTotals.set(order.store, current + qty);
+      });
+    });
+  }
+
+  if (ui.reportStoreBody) {
+    ui.reportStoreBody.innerHTML = "";
+    if (showProductTotals && stores.length) {
+      const rows = (store === "all" ? stores : stores.filter((name) => name === store));
+      rows.forEach((storeName) => {
+        const row = document.createElement("tr");
+        const nameCell = document.createElement("td");
+        nameCell.textContent = storeName;
+        const qtyCell = document.createElement("td");
+        qtyCell.textContent = String(storeTotals.get(storeName) || 0);
+        row.appendChild(nameCell);
+        row.appendChild(qtyCell);
+        ui.reportStoreBody.appendChild(row);
+      });
+    }
+  }
+
+  setHidden(ui.reportStoreEmpty, showProductTotals && stores.length);
+  if (ui.reportStoreEmpty && !showProductTotals) {
+    ui.reportStoreEmpty.textContent = "Select a product and timeframe to see totals.";
+  } else if (ui.reportStoreEmpty && !stores.length) {
+    ui.reportStoreEmpty.textContent = "No order history yet. Submit orders to populate reports.";
+  }
+
+  const compareProduct = state.reports.compareProduct;
+  const compareStart = parseDateValue(state.reports.compareStart);
+  const compareEnd = parseDateValue(state.reports.compareEnd);
+  const compareTotals = new Map();
+  stores.forEach((storeName) => compareTotals.set(storeName, 0));
+
+  let compareValid = !!compareProduct;
+  if (compareValid && compareStart && compareEnd && compareStart > compareEnd) {
+    compareValid = false;
+    if (ui.compareEmpty) ui.compareEmpty.textContent = "Start date must be before end date.";
+  } else if (ui.compareEmpty) {
+    ui.compareEmpty.textContent = "Choose a product and date range to compare stores.";
+  }
+
+  if (compareValid) {
+    state.orders.forEach((order) => {
+      if (!order || !order.requested_date) return;
+      const orderDate = parseDateValue(order.requested_date);
+      if (!isWithinRange(orderDate, compareStart, compareEnd)) return;
+
+      (order.items || []).forEach((item) => {
+        if (!itemMatchesProduct(item, compareProduct)) return;
+        const current = compareTotals.get(order.store) || 0;
+        const qty = Number(item.qty) || 0;
+        compareTotals.set(order.store, current + qty);
+      });
+    });
+  }
+
+  if (ui.compareBody) {
+    ui.compareBody.innerHTML = "";
+    if (compareValid && stores.length) {
+      const sortedStores = Array.from(stores).sort((a, b) => {
+        return (compareTotals.get(b) || 0) - (compareTotals.get(a) || 0);
+      });
+      sortedStores.forEach((storeName) => {
+        const row = document.createElement("tr");
+        const nameCell = document.createElement("td");
+        nameCell.textContent = storeName;
+        const qtyCell = document.createElement("td");
+        qtyCell.textContent = String(compareTotals.get(storeName) || 0);
+        row.appendChild(nameCell);
+        row.appendChild(qtyCell);
+        ui.compareBody.appendChild(row);
+      });
+    }
+  }
+
+  setHidden(ui.compareEmpty, compareValid && stores.length);
+  if (ui.compareEmpty && !stores.length) {
+    ui.compareEmpty.textContent = "No order history yet. Submit orders to populate reports.";
+  }
+}
+
+function recordOrderHistory(payload, orderId) {
+  const entry = {
+    id: orderId || `local-${Date.now()}`,
+    store: payload.store,
+    requested_date: payload.requested_date,
+    placed_by: payload.placed_by,
+    items: payload.items || [],
+    created_at: nowIso(),
+  };
+  state.orders.push(entry);
+  localStorage.setItem(CACHE.ORDERS, JSON.stringify(state.orders));
+  updateReportOptions();
+  renderReports();
 }
 
 // =========================
@@ -835,6 +1190,7 @@ async function submitOrder() {
     token: TOKEN || undefined,
     store: state.meta.store,
     placed_by: state.meta.placed_by,
+    timestamp: nowIso(),
     email: state.meta.email,
     requested_date: state.meta.requested_date,
     notes: state.meta.notes,
@@ -844,6 +1200,9 @@ async function submitOrder() {
       ts: nowIso(),
     },
   };
+
+  const localOrder = createLocalOrderRecord(payload, items);
+  storeLocalOrder(localOrder);
 
   ui.submitBtn.disabled = true;
   ui.submitBtn.textContent = "Submitting...";
@@ -872,6 +1231,7 @@ async function submitOrder() {
     showSubmitSuccess(`Order submitted successfully. Order ID: ${orderId}`);
 
     // Reset quantities after success
+    recordOrderHistory(payload, orderId);
     state.quantities = {};
     state.dirty = false;
     saveCache();
@@ -892,21 +1252,102 @@ async function submitOrder() {
 // EVENTS
 // =========================
 function wireEvents() {
-  ui.refreshBtn?.addEventListener("click", () => refreshCatalog());
+  ui.topMenuToggle?.addEventListener("click", () => {
+    if (!ui.topMenuList) return;
+    const isHidden = ui.topMenuList.hidden;
+    setHidden(ui.topMenuList, !isHidden);
+    ui.topMenuToggle?.setAttribute("aria-expanded", String(isHidden));
+  });
 
-  ui.nextBtn?.addEventListener("click", goNext);
-  ui.backBtn?.addEventListener("click", goBack);
+  ui.homeOrder?.addEventListener("click", () => {
+    setActiveTab("order");
+    showOrderApp();
+  });
+
+  ui.homeDrivers?.addEventListener("click", () => {
+    window.location.href = "delivery.html";
+  });
+
+  ui.homeHistory?.addEventListener("click", () => {
+    window.location.href = "history.html";
+  });
+
+  ui.homeReports?.addEventListener("click", () => {
+    showOrderApp();
+    setActiveTab("reports");
+  });
+
+  ui.topMenuOrder?.addEventListener("click", () => {
+    setActiveTab("order");
+    showOrderApp();
+    setHidden(ui.topMenuList, true);
+  });
+
+  ui.topMenuDrivers?.addEventListener("click", () => {
+    window.location.href = "delivery.html";
+    setHidden(ui.topMenuList, true);
+  });
+
+  ui.topMenuHistory?.addEventListener("click", () => {
+    window.location.href = "history.html";
+  });
+
+  ui.topMenuReports?.addEventListener("click", () => {
+    showOrderApp();
+    setActiveTab("reports");
+    setHidden(ui.topMenuList, true);
+  });
+
+  ui.refreshBtn?.addEventListener("click", () => refreshCatalog());
+  ui.orderTabBtn?.addEventListener("click", () => setActiveTab("order"));
+  ui.reportsTabBtn?.addEventListener("click", () => setActiveTab("reports"));
+
   ui.reviewBtn?.addEventListener("click", showReview);
+  ui.backToCategories?.addEventListener("click", () => {
+    state.selectedCategory = "";
+    showCatalog();
+  });
 
   ui.editBtn?.addEventListener("click", backToWizard);
   ui.submitBtn?.addEventListener("click", submitOrder);
 
-  // Enter / Done advances
-  ui.qtyInput?.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      goNext();
+  ui.itemList?.addEventListener("click", (event) => {
+    const btn = event.target.closest("button[data-action]");
+    if (!btn) return;
+    const control = btn.closest(".qtyControl");
+    const sku = control?.dataset?.sku;
+    if (!sku) return;
+
+    const current = getQty(sku);
+    const action = btn.dataset.action;
+    const next = action === "increment" ? current + 1 : current - 1;
+    const updated = Math.max(0, next);
+    setQty(sku, updated);
+    const input = control.querySelector(".qtyInput");
+    if (input) input.value = updated > 0 ? String(updated) : "";
+    showError("");
+  });
+
+  ui.itemList?.addEventListener("input", (event) => {
+    const input = event.target.closest(".qtyInput");
+    if (!input) return;
+    const control = input.closest(".qtyControl");
+    const sku = control?.dataset?.sku;
+    if (!sku) return;
+
+    const parsed = parseQtyInput(input.value);
+    if (parsed === null) {
+      if (String(input.value || "").trim() === "") {
+        setQty(sku, 0);
+        showError("");
+      } else {
+        showError("Quantity must be a number.");
+      }
+      return;
     }
+    setQty(sku, parsed);
+    input.value = parsed > 0 ? String(parsed) : "";
+    showError("");
   });
 
   // Mark dirty if meta changes
@@ -917,23 +1358,21 @@ function wireEvents() {
   ui.email?.addEventListener("input", markDirty);
   ui.notes?.addEventListener("input", markDirty);
 
-  // Optional: category jump toggle
-  ui.categoryJumpBtn?.addEventListener("click", () => {
-    if (!ui.categoryJumpMenu) return;
-    ui.categoryJumpMenu.hidden = !ui.categoryJumpMenu.hidden;
-  });
-
-  // Optional: search
-  ui.searchInput?.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      searchAndJump(ui.searchInput.value);
-    }
-  });
-
   // Online/offline indicator
   window.addEventListener("online", updateNetStatus);
   window.addEventListener("offline", updateNetStatus);
+
+  window.addEventListener("storage", (event) => {
+    if (event.key === CACHE.ORDERS) {
+      loadOrders();
+      renderTodayOrders();
+    }
+  });
+
+  window.addEventListener("focus", () => {
+    loadOrders();
+    renderTodayOrders();
+  });
 }
 
 // =========================
@@ -941,15 +1380,26 @@ function wireEvents() {
 // =========================
 function init() {
   loadCache();
+  loadOrders();
   buildSteps();
   wireEvents();
   updateNetStatus();
-  renderWizard();
+  setActiveTab("order");
+  showCatalog();
+  showHome();
 
   // If store is locked by URL param, keep it locked
   if (STORE_LOCK && ui.store) {
     ui.store.value = STORE_LOCK;
     ui.store.setAttribute("disabled", "disabled");
+  }
+
+  if (VIEW === "order") {
+    showOrderApp();
+  }
+  if (VIEW === "reports") {
+    showOrderApp();
+    setActiveTab("reports");
   }
 
   // If cache is stale or empty, try a background refresh
