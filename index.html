@@ -7,84 +7,103 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="topbar__row">
-      <div>
-        <div class="title">Retail Order</div>
-        <div class="subtitle" id="lastUpdated">Catalog: not loaded</div>
-      </div>
-      <div class="topbar__actions">
-        <a class="btn btn--ghost" href="history.html">Order History</a>
-        <button class="btn btn--ghost" id="refreshBtn" type="button">Refresh Products</button>
+  <section class="home" id="homeScreen">
+    <div class="home__card">
+      <div class="home__title">Retail Orders</div>
+      <div class="home__menu">
+        <button class="btn btn--primary" id="menuToggle" type="button" aria-expanded="false" aria-controls="menuList">
+          Menu
+        </button>
+        <div class="menu" id="menuList" hidden>
+          <button class="menu__item" id="menuOrder" type="button">Order Products</button>
+          <button class="menu__item" id="menuDrivers" type="button">Drivers</button>
+          <button class="menu__item" id="menuHistory" type="button">History</button>
+          <button class="menu__item" id="menuReports" type="button">Reports</button>
+        </div>
       </div>
     </div>
+  </section>
 
-    <div class="meta">
-      <label class="field">
-        <span>Store</span>
-        <input id="store" placeholder="Boniface / Huffman / ..." autocomplete="off" required />
-      </label>
+  <div id="orderApp" hidden>
+    <header class="topbar">
+      <div class="topbar__row">
+        <div>
+          <div class="title">Retail Order</div>
+          <div class="subtitle" id="lastUpdated">Catalog: not loaded</div>
+        </div>
+        <div class="topbar__actions">
+          <a class="btn btn--ghost" href="history.html">Order History</a>
+          <button class="btn btn--ghost" id="refreshBtn" type="button">Refresh Products</button>
+        </div>
+      </div>
 
-      <div class="meta__row">
+      <div class="meta">
         <label class="field">
-          <span>Requested date</span>
-          <input id="requestedDate" type="date" required />
+          <span>Store</span>
+          <input id="store" placeholder="Boniface / Huffman / ..." autocomplete="off" required />
+        </label>
+
+        <div class="meta__row">
+          <label class="field">
+            <span>Requested date</span>
+            <input id="requestedDate" type="date" required />
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Placed by</span>
+          <input id="placedBy" placeholder="Name" autocomplete="name" required />
+        </label>
+
+        <label class="field">
+          <span>Email</span>
+          <input id="email" placeholder="optional" inputmode="email" autocomplete="email" />
+        </label>
+
+        <label class="field">
+          <span>Notes</span>
+          <textarea id="notes" rows="2" placeholder="Anything the office should know"></textarea>
         </label>
       </div>
+    </header>
 
-      <label class="field">
-        <span>Placed by</span>
-        <input id="placedBy" placeholder="Name" autocomplete="name" required />
-      </label>
+    <main class="container">
+      <section id="wizard" class="card">
+        <div class="pill" id="pillCategory">—</div>
+        <h1 class="productName" id="productName">Load products to begin</h1>
+        <div class="productMeta" id="productMeta"></div>
 
-      <label class="field">
-        <span>Email</span>
-        <input id="email" placeholder="optional" inputmode="email" autocomplete="email" />
-      </label>
+        <label class="field">
+          <span>Quantity (leave blank to skip)</span>
+          <input id="qtyInput" inputmode="numeric" pattern="[0-9]*" placeholder="" />
+        </label>
 
-      <label class="field">
-        <span>Notes</span>
-        <textarea id="notes" rows="2" placeholder="Anything the office should know"></textarea>
-      </label>
-    </div>
-  </header>
+        <div class="progress">
+          <div id="progressText">—</div>
+          <div id="selectedText">Selected: 0</div>
+        </div>
 
-  <main class="container">
-    <section id="wizard" class="card">
-      <div class="pill" id="pillCategory">—</div>
-      <h1 class="productName" id="productName">Load products to begin</h1>
-      <div class="productMeta" id="productMeta"></div>
+        <div class="actions">
+          <button class="btn" id="backBtn" type="button">Back</button>
+          <button class="btn btn--primary" id="nextBtn" type="button">Next</button>
+        </div>
 
-      <label class="field">
-        <span>Quantity (leave blank to skip)</span>
-        <input id="qtyInput" inputmode="numeric" pattern="[0-9]*" placeholder="" />
-      </label>
+        <button class="btn btn--full" id="reviewBtn" type="button">Review & Submit</button>
+        <div class="error" id="errorBox" hidden></div>
+      </section>
 
-      <div class="progress">
-        <div id="progressText">—</div>
-        <div id="selectedText">Selected: 0</div>
-      </div>
-
-      <div class="actions">
-        <button class="btn" id="backBtn" type="button">Back</button>
-        <button class="btn btn--primary" id="nextBtn" type="button">Next</button>
-      </div>
-
-      <button class="btn btn--full" id="reviewBtn" type="button">Review & Submit</button>
-      <div class="error" id="errorBox" hidden></div>
-    </section>
-
-    <section id="review" class="card" hidden>
-      <h2>Review</h2>
-      <div id="reviewList" class="reviewList"></div>
-      <div class="actions">
-        <button class="btn" id="editBtn" type="button">Back to editing</button>
-        <button class="btn btn--primary" id="submitBtn" type="button">Submit Order</button>
-      </div>
-      <div class="error" id="submitError" hidden></div>
-      <div class="success" id="submitSuccess" hidden></div>
-    </section>
-  </main>
+      <section id="review" class="card" hidden>
+        <h2>Review</h2>
+        <div id="reviewList" class="reviewList"></div>
+        <div class="actions">
+          <button class="btn" id="editBtn" type="button">Back to editing</button>
+          <button class="btn btn--primary" id="submitBtn" type="button">Submit Order</button>
+        </div>
+        <div class="error" id="submitError" hidden></div>
+        <div class="success" id="submitSuccess" hidden></div>
+      </section>
+    </main>
+  </div>
 
   <script src="app.js"></script>
 </body>

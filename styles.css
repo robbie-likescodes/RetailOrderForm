@@ -23,6 +23,60 @@ body{
   background: radial-gradient(circle at top, #eef2ff 0%, var(--bg) 45%, #eef6ff 100%);
 }
 
+.home{
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--pad) * 2);
+}
+
+.home__card{
+  width: min(420px, 100%);
+  background: var(--card);
+  border: var(--border);
+  border-radius: calc(var(--radius) + 6px);
+  padding: calc(var(--pad) * 1.6);
+  box-shadow: var(--shadow-soft);
+  text-align: center;
+}
+
+.home__title{
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 18px;
+}
+
+.home__menu{
+  display: grid;
+  gap: 12px;
+}
+
+.menu{
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(79, 70, 229, 0.18);
+  background: rgba(79, 70, 229, 0.06);
+}
+
+.menu__item{
+  border: none;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #ffffff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow-subtle);
+}
+
+.menu__item:hover{
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.12);
+}
+
 .topbar{
   padding: calc(var(--pad) * 1.2);
   background: linear-gradient(135deg, #ffffff 0%, #f1f5ff 100%);
