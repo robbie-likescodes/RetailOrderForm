@@ -40,6 +40,7 @@ const CONFIG = {
   CONFIRM_REFRESH_IF_DIRTY: true,
   AUTOFOCUS_QTY: true,
   HIDE_EMPTY_CATEGORIES: true,
+  REQUIRE_TOKEN: false,
 
   // Validation
   MAX_QTY: 9999,
@@ -698,8 +699,17 @@ async function fetchJson(url, { timeoutMs = 15000 } = {}) {
 
   try {
     const res = await fetch(url, { signal: controller.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
+    const text = await res.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch { /* not json */ }
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
+    if (!data) {
+      throw new Error(
+        `Expected JSON but received ${res.headers.get("content-type") || "unknown content-type"}. ` +
+        `Response: ${text.slice(0, 200)}`
+      );
+    }
+    return data;
   } finally {
     clearTimeout(t);
   }
@@ -810,7 +820,7 @@ async function submitOrder() {
   showSubmitError("");
   showSubmitSuccess("");
 
-  if (!TOKEN) {
+  if (CONFIG.REQUIRE_TOKEN && !TOKEN) {
     showSubmitError("Missing security token. Please use the authorized order link.");
     return;
   }
