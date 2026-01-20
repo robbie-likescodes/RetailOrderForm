@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Retail Order History</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__row">
+      <div>
+        <div class="title">Order History</div>
+        <div class="subtitle" id="historyUpdated">Orders: not loaded</div>
+      </div>
+      <div class="topbar__actions">
+        <a class="btn btn--ghost" href="index.html">Back to Order Form</a>
+        <button class="btn btn--ghost" id="historyRefreshBtn" type="button">Refresh Orders</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <div class="historyStatus" id="historyStatus">Pulling the most recent orders…</div>
+      <div class="error" id="historyError" hidden></div>
+      <div class="historyContent" id="historyContent"></div>
+    </section>
+  </main>
+
+  <script src="history.js"></script>
+</body>
+</html>
