@@ -1,10 +1,30 @@
-const SHEET_CATEGORIES = "Categories";
-const SHEET_PRODUCTS = "Products";
+const CONFIG = {
+  sheets: {
+    categories: "Categories",
+    products: "Products",
+    orders: "Orders",
+    orderItems: "OrderItems",
+  },
+};
 
 function jsonResponse(payload) {
   return ContentService
     .createTextOutput(JSON.stringify(payload))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function buildError_(message, code, details, requestId) {
+  const payload = {
+    ok: false,
+    error: message,
+    error_code: code || "UNKNOWN_ERROR",
+    updated_at: new Date().toISOString(),
+  };
+
+  if (requestId) payload.request_id = requestId;
+  if (details) payload.details = details;
+
+  return payload;
 }
 
 function normalizeHeader_(header) {
