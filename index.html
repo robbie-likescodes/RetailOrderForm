@@ -13,7 +13,10 @@
         <div class="title">Retail Order</div>
         <div class="subtitle" id="lastUpdated">Catalog: not loaded</div>
       </div>
-      <button class="btn btn--ghost" id="refreshBtn" type="button">Refresh Products</button>
+      <div class="topbar__actions">
+        <a class="btn btn--ghost btn--link" id="driversBtn" href="delivery.html">Drivers</a>
+        <button class="btn btn--ghost" id="refreshBtn" type="button">Refresh Products</button>
+      </div>
     </div>
 
     <div class="meta">
@@ -47,6 +50,14 @@
   </header>
 
   <main class="container">
+    <section id="todayOrdersCard" class="card">
+      <div class="card__header">
+        <h2>Today's Orders</h2>
+        <span class="hint">Green check marks mean orders are ready for delivery.</span>
+      </div>
+      <div id="todayOrdersList" class="stack"></div>
+    </section>
+
     <section id="wizard" class="card">
       <div class="pill" id="pillCategory">—</div>
       <h1 class="productName" id="productName">Load products to begin</h1>
