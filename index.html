@@ -19,40 +19,25 @@
     <div class="meta">
       <label class="field">
         <span>Store</span>
-        <input id="store" placeholder="Boniface / Huffman / ..." autocomplete="off" />
+        <input id="store" placeholder="Boniface / Huffman / ..." autocomplete="off" required />
       </label>
 
       <div class="meta__row">
         <label class="field">
           <span>Requested date</span>
-          <input id="requestedDate" type="date" />
-        </label>
-
-        <label class="field">
-          <span>Delivery method</span>
-          <select id="deliveryMethod">
-            <option value="Delivery">Delivery</option>
-            <option value="Pickup">Pickup</option>
-          </select>
+          <input id="requestedDate" type="date" required />
         </label>
       </div>
 
       <label class="field">
         <span>Placed by</span>
-        <input id="placedBy" placeholder="Name" autocomplete="name" />
+        <input id="placedBy" placeholder="Name" autocomplete="name" required />
       </label>
 
-      <div class="meta__row">
-        <label class="field">
-          <span>Phone</span>
-          <input id="phone" placeholder="907-..." inputmode="tel" autocomplete="tel" />
-        </label>
-
-        <label class="field">
-          <span>Email</span>
-          <input id="email" placeholder="optional" inputmode="email" autocomplete="email" />
-        </label>
-      </div>
+      <label class="field">
+        <span>Email</span>
+        <input id="email" placeholder="optional" inputmode="email" autocomplete="email" />
+      </label>
 
       <label class="field">
         <span>Notes</span>
