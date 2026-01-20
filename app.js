@@ -13,7 +13,7 @@
  * - Basic input validation and error surfaces
  *
  * Required HTML element IDs expected (matches the earlier index.html):
- * lastUpdated, refreshBtn, store, requestedDate, deliveryMethod, placedBy, phone, email, notes,
+ * lastUpdated, refreshBtn, store, requestedDate, placedBy, email, notes,
  * wizard, review, pillCategory, productName, productMeta, qtyInput, progressText, selectedText,
  * backBtn, nextBtn, reviewBtn, errorBox, reviewList, editBtn, submitBtn, submitError, submitSuccess
  *
@@ -78,9 +78,7 @@ const ui = {
   refreshBtn: $("refreshBtn"),
   store: $("store"),
   requestedDate: $("requestedDate"),
-  deliveryMethod: $("deliveryMethod"),
   placedBy: $("placedBy"),
-  phone: $("phone"),
   email: $("email"),
   notes: $("notes"),
 
@@ -123,9 +121,7 @@ const state = {
   meta: {
     store: "",
     requested_date: "",
-    delivery_method: "Delivery",
     placed_by: "",
-    phone: "",
     email: "",
     notes: "",
   },
@@ -141,6 +137,13 @@ const state = {
 function log(...args) { if (DEBUG) console.log("[OrderPortal]", ...args); }
 
 function nowIso() { return new Date().toISOString(); }
+
+function todayDateValue() {
+  const today = new Date();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${today.getFullYear()}-${month}-${day}`;
+}
 
 function safeJsonParse(s, fallback) {
   try { return JSON.parse(s); } catch { return fallback; }
@@ -219,6 +222,13 @@ function loadCache() {
   if (Array.isArray(prods) && prods.length) state.products = prods;
   if (qtys && typeof qtys === "object") state.quantities = qtys;
   state.meta = { ...state.meta, ...(meta || {}) };
+  state.meta = {
+    store: state.meta.store || "",
+    requested_date: state.meta.requested_date || "",
+    placed_by: state.meta.placed_by || "",
+    email: state.meta.email || "",
+    notes: state.meta.notes || "",
+  };
 
   if (pos && typeof pos.idx === "number") state.idx = Math.max(0, pos.idx | 0);
 
@@ -235,6 +245,7 @@ function loadCache() {
 
   // Apply store lock if present
   if (STORE_LOCK) state.meta.store = STORE_LOCK;
+  if (!state.meta.requested_date) state.meta.requested_date = todayDateValue();
 
   hydrateMetaInputs();
 }
@@ -254,9 +265,7 @@ function saveCache() {
 function hydrateMetaInputs() {
   if (ui.store) ui.store.value = state.meta.store || "";
   if (ui.requestedDate) ui.requestedDate.value = state.meta.requested_date || "";
-  if (ui.deliveryMethod) ui.deliveryMethod.value = state.meta.delivery_method || "Delivery";
   if (ui.placedBy) ui.placedBy.value = state.meta.placed_by || "";
-  if (ui.phone) ui.phone.value = state.meta.phone || "";
   if (ui.email) ui.email.value = state.meta.email || "";
   if (ui.notes) ui.notes.value = state.meta.notes || "";
 
@@ -270,9 +279,7 @@ function hydrateMetaInputs() {
 function syncMetaFromInputs() {
   if (ui.store) state.meta.store = ui.store.value.trim();
   if (ui.requestedDate) state.meta.requested_date = ui.requestedDate.value;
-  if (ui.deliveryMethod) state.meta.delivery_method = ui.deliveryMethod.value;
   if (ui.placedBy) state.meta.placed_by = ui.placedBy.value.trim();
-  if (ui.phone) state.meta.phone = ui.phone.value.trim();
   if (ui.email) state.meta.email = ui.email.value.trim();
   if (ui.notes) state.meta.notes = ui.notes.value.trim();
   saveCache();
@@ -780,7 +787,6 @@ function validateMeta() {
   if (!state.meta.placed_by) return "Placed by is required.";
 
   // Light validation
-  if (state.meta.phone && state.meta.phone.length < 7) return "Phone looks too short.";
   if (state.meta.email && !state.meta.email.includes("@")) return "Email looks invalid.";
 
   return "";
@@ -819,10 +825,8 @@ async function submitOrder() {
     token: TOKEN || undefined,
     store: state.meta.store,
     placed_by: state.meta.placed_by,
-    phone: state.meta.phone,
     email: state.meta.email,
     requested_date: state.meta.requested_date,
-    delivery_method: state.meta.delivery_method,
     notes: state.meta.notes,
     items,
     client: {
@@ -899,9 +903,7 @@ function wireEvents() {
   const markDirty = () => { state.dirty = true; syncMetaFromInputs(); };
   ui.store?.addEventListener("input", markDirty);
   ui.requestedDate?.addEventListener("change", markDirty);
-  ui.deliveryMethod?.addEventListener("change", markDirty);
   ui.placedBy?.addEventListener("input", markDirty);
-  ui.phone?.addEventListener("input", markDirty);
   ui.email?.addEventListener("input", markDirty);
   ui.notes?.addEventListener("input", markDirty);
 
