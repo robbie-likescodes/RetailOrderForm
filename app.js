@@ -3,8 +3,7 @@
  * ------------------------------------------------------------
  * Features:
  * - Loads Categories + Products from Google Apps Script (GET)
- * - Wizard “Next/Back” flow with numeric entry + Enter/Done to advance
- * - Optional category jump menu + search
+ * - Category-first mobile flow with fast quantity controls per item
  * - Local cache for offline / fast startup (categories, products, quantities, form meta, position)
  * - “Refresh Products” button with confirmation and graceful fallback to cache
  * - Review screen with inline edits
@@ -12,13 +11,14 @@
  * - Token support via URL ?token=XXXX and optional store lock via ?store=Boniface
  * - Basic input validation and error surfaces
  *
- * Required HTML element IDs expected (matches the earlier index.html):
+ * Required HTML element IDs expected (matches index.html):
  * lastUpdated, refreshBtn, store, requestedDate, placedBy, email, notes,
- * wizard, review, pillCategory, productName, productMeta, qtyInput, progressText, selectedText,
- * backBtn, nextBtn, reviewBtn, errorBox, reviewList, editBtn, submitBtn, submitError, submitSuccess
+ * catalog, items, categoryList, itemList, selectedSummary, itemsSummary,
+ * categoryTitle, categoryMeta, backToCategories, reviewBtn, errorBox,
+ * review, reviewList, editBtn, submitBtn, submitError, submitSuccess
  *
  * Optional extra IDs (if you add them):
- * categoryJumpBtn, categoryJumpMenu, searchInput, netStatus
+ * netStatus
  */
 
 // =========================
@@ -99,19 +99,18 @@ const ui = {
   email: $("email"),
   notes: $("notes"),
 
-  orderPanel: $("orderPanel"),
-  wizard: $("wizard"),
   review: $("review"),
   reportsPanel: $("reports"),
 
-  pillCategory: $("pillCategory"),
-  productName: $("productName"),
-  productMeta: $("productMeta"),
-  qtyInput: $("qtyInput"),
-  progressText: $("progressText"),
-  selectedText: $("selectedText"),
-  backBtn: $("backBtn"),
-  nextBtn: $("nextBtn"),
+  catalog: $("catalog"),
+  items: $("items"),
+  categoryList: $("categoryList"),
+  itemList: $("itemList"),
+  selectedSummary: $("selectedSummary"),
+  itemsSummary: $("itemsSummary"),
+  categoryTitle: $("categoryTitle"),
+  categoryMeta: $("categoryMeta"),
+  backToCategories: $("backToCategories"),
   reviewBtn: $("reviewBtn"),
   errorBox: $("errorBox"),
 
@@ -123,9 +122,6 @@ const ui = {
   todayOrdersList: $("todayOrdersList"),
 
   // Optional extras
-  categoryJumpBtn: $("categoryJumpBtn"),
-  categoryJumpMenu: $("categoryJumpMenu"),
-  searchInput: $("searchInput"),
   netStatus: $("netStatus"),
 
   reportHistoryCount: $("reportHistoryCount"),
@@ -152,7 +148,7 @@ const state = {
   steps: [],        // flattened ordered products
   idx: 0,           // current step index
   quantities: {},   // sku -> qty number
-  orders: [],
+  selectedCategory: "",
   meta: {
     store: "",
     requested_date: "",
@@ -547,7 +543,7 @@ function buildSteps() {
   // Clamp idx
   state.idx = Math.max(0, Math.min(state.idx, Math.max(0, state.steps.length - 1)));
 
-  renderCategoryJumpMenu();
+  renderCategories();
 }
 
 // =========================
@@ -561,214 +557,162 @@ function countSelected() {
   return n;
 }
 
-function getCurrent() {
-  return state.steps[state.idx] || null;
+function getQty(sku) {
+  return Number(state.quantities[sku]) || 0;
 }
 
-function commitQty() {
-  const step = getCurrent();
-  if (!step) return true;
-
-  const raw = (ui.qtyInput?.value || "").trim();
-  if (raw === "") {
-    if (state.quantities[step.sku] !== undefined) {
-      delete state.quantities[step.sku];
-      state.dirty = true;
-    }
-    saveCache();
-    return true;
-  }
-
-  const num = Number(raw);
-  if (!Number.isFinite(num)) {
-    showError("Quantity must be a number.");
-    return false;
-  }
-  const qty = Math.floor(num);
-  if (qty < 0) {
-    showError("Quantity must be 0 or greater.");
-    return false;
-  }
-  if (qty > CONFIG.MAX_QTY) {
-    showError(`Quantity is too large (max ${CONFIG.MAX_QTY}).`);
-    return false;
-  }
-
-  if (qty === 0) {
-    if (state.quantities[step.sku] !== undefined) {
-      delete state.quantities[step.sku];
+function setQty(sku, qty) {
+  if (!sku) return;
+  if (!Number.isFinite(qty) || qty < 0) return;
+  const clamped = Math.min(Math.floor(qty), CONFIG.MAX_QTY);
+  if (clamped <= 0) {
+    if (state.quantities[sku] !== undefined) {
+      delete state.quantities[sku];
       state.dirty = true;
     }
   } else {
-    if (state.quantities[step.sku] !== qty) {
-      state.quantities[step.sku] = qty;
+    if (state.quantities[sku] !== clamped) {
+      state.quantities[sku] = clamped;
       state.dirty = true;
     }
   }
-
   saveCache();
-  return true;
+  renderSelectedSummary();
 }
 
-function setQtyFocus() {
-  if (!CONFIG.AUTOFOCUS_QTY) return;
-  if (!ui.qtyInput) return;
-  ui.qtyInput.focus();
-  ui.qtyInput.select?.();
+function parseQtyInput(raw) {
+  const trimmed = String(raw || "").trim();
+  if (trimmed === "") return null;
+  const num = Number(trimmed);
+  if (!Number.isFinite(num)) return null;
+  return Math.min(Math.floor(num), CONFIG.MAX_QTY);
 }
 
 // =========================
-// RENDER: WIZARD
+// RENDER: CATALOG / ITEMS
 // =========================
-function renderWizard() {
-  showError("");
+function renderSelectedSummary() {
+  const label = `Selected: ${countSelected()}`;
+  setText(ui.selectedSummary, label);
+  setText(ui.itemsSummary, label);
+}
 
-  const step = getCurrent();
-  if (!step) {
-    setText(ui.pillCategory, "—");
-    setText(ui.productName, "No products loaded");
-    setText(ui.productMeta, "Tap Refresh to load your catalog.");
-    if (ui.qtyInput) ui.qtyInput.value = "";
-    setText(ui.progressText, "—");
-    setText(ui.selectedText, `Selected: ${countSelected()}`);
-    if (ui.backBtn) ui.backBtn.disabled = true;
+function renderCategories() {
+  if (!ui.categoryList) return;
+  ui.categoryList.innerHTML = "";
+
+  if (!state.steps.length) {
+    ui.categoryList.innerHTML = `<div class="categoryCard" aria-disabled="true">
+      <div>No products loaded</div>
+      <div class="categoryCard__meta">Tap refresh to load your catalog.</div>
+    </div>`;
+    renderSelectedSummary();
     return;
   }
 
-  // Category display name
-  const catRow = state.categories.find(c => c.category === step.category);
-  const catLabel = catRow?.display_name || step.category;
+  const counts = new Map();
+  state.steps.forEach(p => {
+    counts.set(p.category, (counts.get(p.category) || 0) + 1);
+  });
 
-  setText(ui.pillCategory, catLabel);
-  setText(ui.productName, step.name);
+  const orderedCategories = state.categories.length
+    ? state.categories.map(c => c.category)
+    : [...new Set(state.steps.map(p => p.category))];
 
-  const metaParts = [];
-  if (step.item_no) metaParts.push(step.item_no);
-  if (step.unit) metaParts.push(step.unit);
-  if (step.pack_size) metaParts.push(step.pack_size);
-  setText(ui.productMeta, metaParts.join(" • "));
+  orderedCategories.forEach(category => {
+    const itemCount = counts.get(category) || 0;
+    if (!itemCount && CONFIG.HIDE_EMPTY_CATEGORIES) return;
+    const catRow = state.categories.find(c => c.category === category);
+    const label = catRow?.display_name || category;
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "categoryCard";
+    card.innerHTML = `
+      <div>${escapeHtml(label)}</div>
+      <div class="categoryCard__meta">${itemCount} item${itemCount === 1 ? "" : "s"}</div>
+    `;
+    card.addEventListener("click", () => {
+      state.selectedCategory = category;
+      showItems();
+    });
+    ui.categoryList.appendChild(card);
+  });
 
-  const existing = state.quantities[step.sku];
-  if (ui.qtyInput) ui.qtyInput.value = existing ? String(existing) : "";
-
-  // Progress: overall + category
-  const overall = `Item ${state.idx + 1} of ${state.steps.length}`;
-  const range = state.categoryIndex.get(step.category);
-  let catProgress = "";
-  if (range) {
-    const within = state.idx - range.start + 1;
-    const total = range.end - range.start + 1;
-    catProgress = ` • ${catLabel} ${within}/${total}`;
-  }
-  setText(ui.progressText, overall + catProgress);
-
-  setText(ui.selectedText, `Selected: ${countSelected()}`);
-  if (ui.backBtn) ui.backBtn.disabled = state.idx === 0;
-
-  saveCache();
-  setQtyFocus();
+  renderSelectedSummary();
 }
 
-// =========================
-// RENDER: CATEGORY JUMP MENU (optional)
-// =========================
-function renderCategoryJumpMenu() {
-  if (!ui.categoryJumpMenu) return;
+function renderItems() {
+  if (!ui.itemList) return;
+  const category = state.selectedCategory;
+  const catRow = state.categories.find(c => c.category === category);
+  const label = catRow?.display_name || category || "Items";
 
-  // Build menu items from current steps order (unique in order)
-  const seen = new Set();
-  const catsInOrder = [];
-  for (const p of state.steps) {
-    if (!seen.has(p.category)) {
-      seen.add(p.category);
-      const row = state.categories.find(c => c.category === p.category);
-      catsInOrder.push({ category: p.category, label: row?.display_name || p.category });
-    }
+  setText(ui.categoryTitle, label);
+
+  const items = state.steps.filter(p => p.category === category);
+  setText(ui.categoryMeta, `${items.length} item${items.length === 1 ? "" : "s"}`);
+
+  ui.itemList.innerHTML = "";
+
+  if (!items.length) {
+    ui.itemList.innerHTML = `<div class="itemCard">
+      <div class="itemCard__name">No items found</div>
+      <div class="itemCard__meta">Pick another category.</div>
+    </div>`;
+    renderSelectedSummary();
+    return;
   }
 
-  ui.categoryJumpMenu.innerHTML = "";
-  for (const c of catsInOrder) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "btn"; // you can style smaller if desired
-    btn.style.height = "44px";
-    btn.textContent = c.label;
-    btn.addEventListener("click", () => jumpToCategory(c.category));
-    ui.categoryJumpMenu.appendChild(btn);
-  }
-}
+  items.forEach(item => {
+    const metaParts = [item.item_no, item.unit, item.pack_size].filter(Boolean);
+    const qty = getQty(item.sku);
+    const card = document.createElement("div");
+    card.className = "itemCard";
+    card.innerHTML = `
+      <div>
+        <div class="itemCard__name">${escapeHtml(item.name)}</div>
+        <div class="itemCard__meta">${escapeHtml(metaParts.join(" • "))}</div>
+      </div>
+      <div class="qtyControl" data-sku="${escapeHtml(item.sku)}">
+        <button class="qtyBtn" type="button" data-action="decrement">−</button>
+        <input class="qtyInput" inputmode="numeric" pattern="[0-9]*" value="${qty ? qty : ""}" />
+        <button class="qtyBtn" type="button" data-action="increment">+</button>
+      </div>
+    `;
+    ui.itemList.appendChild(card);
+  });
 
-function jumpToCategory(category) {
-  const range = state.categoryIndex.get(category);
-  if (!range) return;
-  if (!commitQty()) return;
-  state.idx = range.start;
-  saveCache();
-  renderWizard();
-  if (ui.categoryJumpMenu) ui.categoryJumpMenu.hidden = true;
-}
-
-// =========================
-// SEARCH (optional)
-// =========================
-function searchAndJump(query) {
-  const q = String(query || "").trim().toLowerCase();
-  if (!q) return;
-
-  // Find next match starting from current+1, wrap around
-  const n = state.steps.length;
-  if (!n) return;
-
-  const start = (state.idx + 1) % n;
-  let i = start;
-
-  do {
-    const p = state.steps[i];
-    const hay = `${p.name} ${p.sku} ${p.item_no} ${p.category}`.toLowerCase();
-    if (hay.includes(q)) {
-      if (!commitQty()) return;
-      state.idx = i;
-      saveCache();
-      renderWizard();
-      return;
-    }
-    i = (i + 1) % n;
-  } while (i !== start);
-
-  showError(`No match for “${query}”.`);
+  renderSelectedSummary();
 }
 
 // =========================
 // NAVIGATION
 // =========================
-function goNext() {
-  if (!commitQty()) return;
-  if (state.idx < state.steps.length - 1) {
-    state.idx++;
-    saveCache();
-    renderWizard();
-  } else {
-    showReview();
-  }
+function showCatalog() {
+  setHidden(ui.items, true);
+  setHidden(ui.review, true);
+  setHidden(ui.catalog, false);
+  renderCategories();
 }
 
-function goBack() {
-  if (!commitQty()) return;
-  if (state.idx > 0) {
-    state.idx--;
-    saveCache();
-    renderWizard();
+function showItems() {
+  if (!state.selectedCategory) {
+    showCatalog();
+    return;
   }
+  setHidden(ui.catalog, true);
+  setHidden(ui.review, true);
+  setHidden(ui.items, false);
+  renderItems();
 }
 
 function showReview() {
-  if (!commitQty()) return;
-
   syncMetaFromInputs();
   showSubmitError("");
   showSubmitSuccess("");
 
-  setHidden(ui.wizard, true);
+  setHidden(ui.catalog, true);
+  setHidden(ui.items, true);
   setHidden(ui.review, false);
 
   const selected = state.steps
@@ -840,10 +784,14 @@ function backToWizard() {
 
   saveCache();
   state.dirty = true;
+  renderSelectedSummary();
 
   setHidden(ui.review, true);
-  setHidden(ui.wizard, false);
-  renderWizard();
+  if (state.selectedCategory) {
+    showItems();
+  } else {
+    showCatalog();
+  }
 }
 
 // =========================
@@ -922,14 +870,25 @@ async function refreshCatalog({ force = false } = {}) {
     setText(ui.lastUpdated, `Catalog: ${new Date(iso).toLocaleString()}`);
 
     saveCache();
-    updateReportOptions();
-    renderWizard();
+    if (state.selectedCategory) {
+      const hasCategory = state.steps.some(item => item.category === state.selectedCategory);
+      if (!hasCategory) state.selectedCategory = "";
+    }
+    if (state.selectedCategory) {
+      showItems();
+    } else {
+      showCatalog();
+    }
     state.dirty = false;
 
   } catch (err) {
     showError(`Could not refresh. Using cached data if available. (${String(err)})`);
     buildSteps();
-    renderWizard();
+    if (state.selectedCategory) {
+      showItems();
+    } else {
+      showCatalog();
+    }
   } finally {
     ui.refreshBtn.disabled = false;
     ui.refreshBtn.textContent = "Refresh";
@@ -1338,19 +1297,52 @@ function wireEvents() {
   ui.orderTabBtn?.addEventListener("click", () => setActiveTab("order"));
   ui.reportsTabBtn?.addEventListener("click", () => setActiveTab("reports"));
 
-  ui.nextBtn?.addEventListener("click", goNext);
-  ui.backBtn?.addEventListener("click", goBack);
   ui.reviewBtn?.addEventListener("click", showReview);
+  ui.backToCategories?.addEventListener("click", () => {
+    state.selectedCategory = "";
+    showCatalog();
+  });
 
   ui.editBtn?.addEventListener("click", backToWizard);
   ui.submitBtn?.addEventListener("click", submitOrder);
 
-  // Enter / Done advances
-  ui.qtyInput?.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      goNext();
+  ui.itemList?.addEventListener("click", (event) => {
+    const btn = event.target.closest("button[data-action]");
+    if (!btn) return;
+    const control = btn.closest(".qtyControl");
+    const sku = control?.dataset?.sku;
+    if (!sku) return;
+
+    const current = getQty(sku);
+    const action = btn.dataset.action;
+    const next = action === "increment" ? current + 1 : current - 1;
+    const updated = Math.max(0, next);
+    setQty(sku, updated);
+    const input = control.querySelector(".qtyInput");
+    if (input) input.value = updated > 0 ? String(updated) : "";
+    showError("");
+  });
+
+  ui.itemList?.addEventListener("input", (event) => {
+    const input = event.target.closest(".qtyInput");
+    if (!input) return;
+    const control = input.closest(".qtyControl");
+    const sku = control?.dataset?.sku;
+    if (!sku) return;
+
+    const parsed = parseQtyInput(input.value);
+    if (parsed === null) {
+      if (String(input.value || "").trim() === "") {
+        setQty(sku, 0);
+        showError("");
+      } else {
+        showError("Quantity must be a number.");
+      }
+      return;
     }
+    setQty(sku, parsed);
+    input.value = parsed > 0 ? String(parsed) : "";
+    showError("");
   });
 
   // Mark dirty if meta changes
@@ -1360,46 +1352,6 @@ function wireEvents() {
   ui.placedBy?.addEventListener("input", markDirty);
   ui.email?.addEventListener("input", markDirty);
   ui.notes?.addEventListener("input", markDirty);
-
-  const rerenderReports = () => renderReports();
-  ui.reportProduct?.addEventListener("change", rerenderReports);
-  ui.reportStore?.addEventListener("change", rerenderReports);
-  ui.reportMonth?.addEventListener("change", () => {
-    if (ui.reportMonth?.value) {
-      if (ui.reportDay) ui.reportDay.value = "";
-    }
-    rerenderReports();
-  });
-  ui.reportYear?.addEventListener("change", () => {
-    if (ui.reportYear?.value) {
-      if (ui.reportDay) ui.reportDay.value = "";
-    }
-    rerenderReports();
-  });
-  ui.reportDay?.addEventListener("change", () => {
-    if (ui.reportDay?.value) {
-      if (ui.reportMonth) ui.reportMonth.value = "";
-      if (ui.reportYear) ui.reportYear.value = "";
-    }
-    rerenderReports();
-  });
-  ui.compareProduct?.addEventListener("change", rerenderReports);
-  ui.compareStart?.addEventListener("change", rerenderReports);
-  ui.compareEnd?.addEventListener("change", rerenderReports);
-
-  // Optional: category jump toggle
-  ui.categoryJumpBtn?.addEventListener("click", () => {
-    if (!ui.categoryJumpMenu) return;
-    ui.categoryJumpMenu.hidden = !ui.categoryJumpMenu.hidden;
-  });
-
-  // Optional: search
-  ui.searchInput?.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      searchAndJump(ui.searchInput.value);
-    }
-  });
 
   // Online/offline indicator
   window.addEventListener("online", updateNetStatus);
@@ -1427,9 +1379,7 @@ function init() {
   buildSteps();
   wireEvents();
   updateNetStatus();
-  renderWizard();
-  updateReportOptions();
-  setActiveTab("order");
+  showCatalog();
 
   // If store is locked by URL param, keep it locked
   if (STORE_LOCK && ui.store) {
