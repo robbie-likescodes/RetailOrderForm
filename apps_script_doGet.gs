@@ -7,7 +7,14 @@ function doGet(e) {
 
     if (action === "categories") {
       const rows = getSheetRows_(SHEET_CATEGORIES)
-        .filter(isRowActive_);
+        .filter(row => row.category && isRowActive_(row))
+        .map(row => ({
+          category: String(row.category || "").trim(),
+          display_name: String(row.display_name || row.category || "").trim(),
+          sort: Number(row.sort || 9999),
+        }))
+        .sort((a, b) => a.sort - b.sort);
+
       return jsonResponse({
         ok: true,
         categories: rows,
@@ -17,7 +24,18 @@ function doGet(e) {
 
     if (action === "products") {
       const rows = getSheetRows_(SHEET_PRODUCTS)
-        .filter(isRowActive_);
+        .filter(row => row.sku && row.name && row.category && isRowActive_(row))
+        .map(row => ({
+          item_no: String(row.item_no || "").trim(),
+          sku: String(row.sku || "").trim(),
+          name: String(row.name || "").trim(),
+          category: String(row.category || "").trim(),
+          unit: String(row.unit || "").trim(),
+          pack_size: String(row.pack_size || "").trim(),
+          sort: Number(row.sort || 9999),
+        }))
+        .sort((a, b) => a.sort - b.sort);
+
       return jsonResponse({
         ok: true,
         products: rows,
