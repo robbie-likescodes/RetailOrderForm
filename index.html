@@ -193,6 +193,15 @@
               <option value="">All years</option>
             </select>
           </label>
+          <label class="field">
+            <span>Sort</span>
+            <select id="reportSort">
+              <option value="qty-desc">Qty (high to low)</option>
+              <option value="qty-asc">Qty (low to high)</option>
+              <option value="store-asc">Store (A → Z)</option>
+              <option value="store-desc">Store (Z → A)</option>
+            </select>
+          </label>
         </div>
         <div class="tableWrap">
           <table class="table">
@@ -224,6 +233,15 @@
           <label class="field">
             <span>End date</span>
             <input id="compareEnd" type="date" />
+          </label>
+          <label class="field">
+            <span>Sort</span>
+            <select id="compareSort">
+              <option value="qty-desc">Qty (high to low)</option>
+              <option value="qty-asc">Qty (low to high)</option>
+              <option value="store-asc">Store (A → Z)</option>
+              <option value="store-desc">Store (Z → A)</option>
+            </select>
           </label>
         </div>
         <div class="tableWrap">
