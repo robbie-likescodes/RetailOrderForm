@@ -950,7 +950,11 @@ async function refreshCatalog({ force = false } = {}) {
     return;
   }
 
-  setTopbarRefreshState({ isLoading: true, label: "Refreshing products from Google Sheets" });
+  setTopbarRefreshState({
+    isLoading: true,
+    label: "Refreshing products from Google Sheets",
+    text: "Refreshing...",
+  });
 
   try {
     const t = Date.now();
@@ -1026,7 +1030,13 @@ function getRefreshLabel() {
     : "Refresh products from Google Sheets";
 }
 
-function setTopbarRefreshState({ isLoading, label } = {}) {
+function getRefreshButtonText() {
+  return state.activeTab === "reports"
+    ? "Refresh Reports"
+    : "Refresh Products";
+}
+
+function setTopbarRefreshState({ isLoading, label, text } = {}) {
   if (!ui.refreshBtn) return;
   if (typeof isLoading === "boolean") {
     ui.refreshBtn.disabled = isLoading;
@@ -1040,10 +1050,13 @@ function setTopbarRefreshState({ isLoading, label } = {}) {
     ui.refreshBtn.setAttribute("aria-label", label);
     ui.refreshBtn.setAttribute("title", label);
   }
+  if (text) {
+    ui.refreshBtn.textContent = text;
+  }
 }
 
 function updateRefreshButtonLabel() {
-  setTopbarRefreshState({ label: getRefreshLabel() });
+  setTopbarRefreshState({ label: getRefreshLabel(), text: getRefreshButtonText() });
 }
 
 async function refreshReports({ force = false } = {}) {
@@ -1061,7 +1074,11 @@ async function refreshReports({ force = false } = {}) {
     ui.refreshReportsBtn.disabled = true;
     ui.refreshReportsBtn.textContent = "Refreshing...";
   }
-  setTopbarRefreshState({ isLoading: true, label: "Refreshing reports from Google Sheets" });
+  setTopbarRefreshState({
+    isLoading: true,
+    label: "Refreshing reports from Google Sheets",
+    text: "Refreshing...",
+  });
 
   try {
     const t = Date.now();
