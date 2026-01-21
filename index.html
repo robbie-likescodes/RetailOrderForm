@@ -199,12 +199,26 @@
       </div>
 
       <div class="reports__section">
-        <h3>Store comparison over time</h3>
+        <h3>Side-by-side store comparison</h3>
+        <p class="muted reports__hint">Compare stores across quick timeframes (last month, last quarter, last year) plus a custom range.</p>
         <div class="reports__filters reports__filters--compact">
           <label class="field">
+            <span>Compare by</span>
+            <select id="compareScope">
+              <option value="product">Product</option>
+              <option value="category">Category</option>
+            </select>
+          </label>
+          <label class="field" id="compareProductField">
             <span>Product</span>
             <select id="compareProduct">
               <option value="">Select a product</option>
+            </select>
+          </label>
+          <label class="field" id="compareCategoryField" hidden>
+            <span>Category</span>
+            <select id="compareCategory">
+              <option value="">Select a category</option>
             </select>
           </label>
           <label class="field">
@@ -225,17 +239,13 @@
             </select>
           </label>
         </div>
-        <div class="tableWrap">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Store</th>
-                <th>Qty</th>
-              </tr>
-            </thead>
+        <div class="reports__subnote" id="compareRangeHint"></div>
+        <div class="tableWrap tableWrap--wide">
+          <table class="table table--compare">
+            <thead id="compareHead"></thead>
             <tbody id="compareBody"></tbody>
           </table>
-          <div class="empty" id="compareEmpty" hidden>Choose a product and date range to compare stores.</div>
+          <div class="empty" id="compareEmpty" hidden>Select a product or category to compare stores.</div>
         </div>
       </div>
     </section>
