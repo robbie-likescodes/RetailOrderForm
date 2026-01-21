@@ -155,6 +155,61 @@ body{
   gap: var(--gap);
 }
 
+.reports__header{
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap);
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.reports__summary{
+  display: grid;
+  grid-auto-flow: column;
+  gap: 12px;
+  align-items: center;
+}
+
+.reports__metric{
+  background: rgba(79, 70, 229, 0.08);
+  border-radius: 14px;
+  padding: 10px 12px;
+  min-width: 140px;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.reports__metric strong{
+  font-size: 18px;
+  color: var(--text);
+}
+
+.reports__section{
+  display: grid;
+  gap: 12px;
+}
+
+.reports__filters{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.reports__filters--compact{
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.reports__hint{
+  margin-top: -6px;
+}
+
+.reports__subnote{
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .card{
   background: var(--card);
   border: var(--border);
@@ -179,6 +234,72 @@ body{
 .stack{
   display: grid;
   gap: 12px;
+}
+
+.tableWrap{
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: var(--shadow-subtle);
+}
+
+.tableWrap--wide{
+  overflow-x: auto;
+}
+
+.table{
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 420px;
+  font-size: 14px;
+}
+
+.table--compare{
+  min-width: 680px;
+}
+
+.table th,
+.table td{
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.table thead th{
+  background: rgba(79, 70, 229, 0.08);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.table tbody tr:nth-child(even){
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.table__headTitle{
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.table__headSub{
+  font-size: 11px;
+  text-transform: none;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.table__cellMuted{
+  color: var(--muted);
+}
+
+.empty{
+  padding: 12px 14px;
+  background: rgba(148, 163, 184, 0.14);
+  color: var(--muted);
+  font-size: 14px;
 }
 
 .meta{ margin-top: 14px; display: grid; gap: var(--gap); }
