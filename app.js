@@ -45,6 +45,7 @@ const CONFIG = {
 
   // Validation
   MAX_QTY: 9999,
+  QTY_SELECT_MAX: 50,
   REPORT_REFRESH_MS: 1000 * 60 * 5,
 
   // If your stores are fixed, put them here (optional). If empty, free-text store entry.
@@ -110,7 +111,6 @@ const ui = {
   pillCategory: $("pillCategory"),
   productName: $("productName"),
   productMeta: $("productMeta"),
-  qtyInput: $("qtyInput"),
   progressText: $("progressText"),
   selectedText: $("selectedText"),
   backBtn: $("backBtn"),
@@ -621,12 +621,17 @@ function setQty(sku, qty) {
   renderSelectedSummary();
 }
 
-function parseQtyInput(raw) {
-  const trimmed = String(raw || "").trim();
-  if (trimmed === "") return null;
-  const num = Number(trimmed);
-  if (!Number.isFinite(num)) return null;
-  return Math.min(Math.floor(num), CONFIG.MAX_QTY);
+function buildQtySelectOptions(currentQty) {
+  const selectedQty = Number(currentQty) || 0;
+  const options = [];
+  for (let i = 0; i <= CONFIG.QTY_SELECT_MAX; i++) {
+    const isSelected = i === selectedQty ? " selected" : "";
+    options.push(`<option value="${i}"${isSelected}>${i}</option>`);
+  }
+  if (selectedQty > CONFIG.QTY_SELECT_MAX) {
+    options.push(`<option value="${selectedQty}" selected>${selectedQty}</option>`);
+  }
+  return options.join("");
 }
 
 // =========================
@@ -714,16 +719,11 @@ function renderItems() {
         <div class="itemCard__name">${escapeHtml(item.name)}</div>
         <div class="itemCard__meta">${escapeHtml(metaParts.join(" • "))}</div>
       </div>
-      <div class="qtyControl" data-sku="${escapeHtml(item.sku)}">
-        <button class="qtyBtn" type="button" data-action="decrement">−</button>
-        <input class="qtyInput" inputmode="numeric" pattern="[0-9]*" value="${qty ? qty : ""}" />
-        <button class="qtyBtn" type="button" data-action="increment">+</button>
-      </div>
-      <div class="qtyQuick" data-sku="${escapeHtml(item.sku)}">
-        <button class="qtyChip" type="button" data-qty="1">+1</button>
-        <button class="qtyChip" type="button" data-qty="2">2</button>
-        <button class="qtyChip" type="button" data-qty="3">3</button>
-        <button class="qtyChip" type="button" data-qty="5">5</button>
+      <div class="qtyControl">
+        <label class="qtyLabel" for="qty-${escapeHtml(item.sku)}">Qty</label>
+        <select class="qtySelect" id="qty-${escapeHtml(item.sku)}" data-sku="${escapeHtml(item.sku)}">
+          ${buildQtySelectOptions(qty)}
+        </select>
       </div>
     `;
     ui.itemList.appendChild(card);
@@ -1457,56 +1457,14 @@ function wireEvents() {
   ui.editBtn?.addEventListener("click", backToWizard);
   ui.submitBtn?.addEventListener("click", submitOrder);
 
-  ui.itemList?.addEventListener("click", (event) => {
-    const btn = event.target.closest("button[data-action]");
-    if (btn) {
-      const control = btn.closest(".qtyControl");
-      const sku = control?.dataset?.sku;
-      if (!sku) return;
-
-      const current = getQty(sku);
-      const action = btn.dataset.action;
-      const next = action === "increment" ? current + 1 : current - 1;
-      const updated = Math.max(0, next);
-      setQty(sku, updated);
-      const input = control.querySelector(".qtyInput");
-      if (input) input.value = updated > 0 ? String(updated) : "";
-      showError("");
-      return;
-    }
-
-    const chip = event.target.closest("button[data-qty]");
-    if (!chip) return;
-    const container = chip.closest(".qtyQuick");
-    const sku = container?.dataset?.sku;
+  ui.itemList?.addEventListener("change", (event) => {
+    const select = event.target.closest(".qtySelect");
+    if (!select) return;
+    const sku = select.dataset.sku;
     if (!sku) return;
-    const qty = Number(chip.dataset.qty);
+    const qty = Number(select.value);
     if (!Number.isFinite(qty)) return;
     setQty(sku, qty);
-    const input = container.closest(".itemCard")?.querySelector(".qtyInput");
-    if (input) input.value = qty > 0 ? String(qty) : "";
-    showError("");
-  });
-
-  ui.itemList?.addEventListener("input", (event) => {
-    const input = event.target.closest(".qtyInput");
-    if (!input) return;
-    const control = input.closest(".qtyControl");
-    const sku = control?.dataset?.sku;
-    if (!sku) return;
-
-    const parsed = parseQtyInput(input.value);
-    if (parsed === null) {
-      if (String(input.value || "").trim() === "") {
-        setQty(sku, 0);
-        showError("");
-      } else {
-        showError("Quantity must be a number.");
-      }
-      return;
-    }
-    setQty(sku, parsed);
-    input.value = parsed > 0 ? String(parsed) : "";
     showError("");
   });
 

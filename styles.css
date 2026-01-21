@@ -315,42 +315,26 @@ textarea:focus{
 
 .qtyControl{
   display: grid;
-  grid-template-columns: 48px minmax(64px, 90px) 48px;
-  gap: 10px;
+  grid-template-columns: minmax(48px, auto) minmax(120px, 1fr);
+  gap: 12px;
   align-items: center;
 }
 
-.qtyBtn{
+.qtyLabel{
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.qtySelect{
   height: 48px;
   border-radius: 14px;
   border: 1px solid rgba(15, 23, 42, 0.16);
   background: #f8fafc;
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 600;
+  padding: 0 14px;
   color: var(--primary-strong);
-  cursor: pointer;
-}
-
-.qtyInput{
-  text-align: center;
-  font-weight: 600;
-  font-size: 17px;
-}
-
-.qtyQuick{
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.qtyChip{
-  border-radius: 999px;
-  border: 1px solid rgba(79, 70, 229, 0.25);
-  background: rgba(79, 70, 229, 0.08);
-  color: var(--primary-strong);
-  font-weight: 600;
-  font-size: 14px;
-  padding: 8px 12px;
   cursor: pointer;
 }
 
