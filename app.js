@@ -1656,6 +1656,14 @@ async function submitOrder() {
     },
   };
 
+  const payloadSummary = {
+    store: payload.store,
+    placed_by: payload.placed_by,
+    requested_date: payload.requested_date,
+    item_count: items.length,
+    total_qty: items.reduce((sum, item) => sum + Number(item.qty || 0), 0),
+  };
+
   const localOrder = createLocalOrderRecord(payload, items);
   storeLocalOrder(localOrder);
 
@@ -1668,6 +1676,9 @@ async function submitOrder() {
       body: payload,
       cacheBust: true,
       retry: 2,
+      onRequest: ({ url, method }) => {
+        console.info("[OrderPortal] Submit request", { method, url, payload: payloadSummary });
+      },
     });
 
     const orderId = data.order_id || "(no id)";
@@ -1681,13 +1692,23 @@ async function submitOrder() {
     saveCache();
 
   } catch (err) {
-    const message = err.userMessage || err.message || String(err);
-    const requestId = err.payload?.request_id ? ` (Request ID: ${err.payload.request_id})` : "";
+    const statusText = err.status ? `HTTP ${err.status}` : "";
+    const responseJson = err.responseJson || err.payload || null;
+    const responseText = !responseJson && err.responseText ? err.responseText.slice(0, 500) : "";
+    const responseSummary = responseJson
+      ? `Response: ${JSON.stringify(responseJson)}`
+      : responseText
+        ? `Response: ${responseText}`
+        : "";
+    const exceptionSummary = err && err.name ? `${err.name}: ${err.message || ""}`.trim() : (err.message || String(err));
+    const requestId = err.payload?.request_id || err.responseJson?.request_id;
+    const details = [statusText, responseSummary, exceptionSummary].filter(Boolean).join(" | ");
     const hint = err.isNetworkError
       ? "Network/CORS/deployment issue likely. Verify the Apps Script web app /exec URL and that it is deployed for 'Anyone' access."
-      : message;
-    showSubmitError(`Submit failed. ${hint}${requestId}`);
-    showGlobalError(`Order submission failed. ${hint}${requestId}`, "warning");
+      : details || "Request failed.";
+    const requestIdSuffix = requestId ? ` (Request ID: ${requestId})` : "";
+    showSubmitError(`Submit failed. ${hint}${requestIdSuffix}`);
+    showGlobalError(`Order submission failed. ${hint}${requestIdSuffix}`, "warning");
     if (DEBUG) console.error(err);
   } finally {
     ui.submitBtn.disabled = false;

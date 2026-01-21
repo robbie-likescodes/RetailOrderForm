@@ -218,6 +218,7 @@
       timeoutMs = DEFAULT_TIMEOUT_MS,
       retry = 1,
       cacheBust = true,
+      onRequest,
     } = options;
 
     const correlationId = createCorrelationId();
@@ -292,7 +293,7 @@
           throw err;
         }
 
-        const data = safeJsonParse(text);
+        const data = parsedJson;
         if (!data) {
           const err = new Error("Failed to parse JSON response.");
           err.raw = text;
