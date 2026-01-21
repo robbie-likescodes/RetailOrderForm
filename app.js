@@ -93,6 +93,7 @@ const ui = {
   topMenuDrivers: $("topMenuDrivers"),
   topMenuHistory: $("topMenuHistory"),
   topMenuReports: $("topMenuReports"),
+  topMenuRefresh: $("topMenuRefresh"),
   lastUpdated: $("lastUpdated"),
   refreshBtn: $("refreshBtn"),
   orderTabBtn: $("orderTabBtn"),
@@ -1436,11 +1437,17 @@ function wireEvents() {
 
   ui.topMenuHistory?.addEventListener("click", () => {
     window.location.href = "history.html";
+    setHidden(ui.topMenuList, true);
   });
 
   ui.topMenuReports?.addEventListener("click", () => {
     showOrderApp();
     setActiveTab("reports");
+    setHidden(ui.topMenuList, true);
+  });
+
+  ui.topMenuRefresh?.addEventListener("click", () => {
+    refreshCatalog();
     setHidden(ui.topMenuList, true);
   });
 
