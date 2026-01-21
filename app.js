@@ -913,7 +913,15 @@ async function fetchJson(url, { timeoutMs = 15000 } = {}) {
   const t = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, {
+      signal: controller.signal,
+      mode: "cors",
+      cache: "no-store",
+      headers: {
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+      },
+    });
     const text = await res.text();
     let data = null;
     try { data = JSON.parse(text); } catch { /* not json */ }
@@ -958,16 +966,32 @@ async function refreshCatalog({ force = false } = {}) {
 
   try {
     const t = Date.now();
-    const [catsResp, prodsResp] = await Promise.all([
+    const [catsResult, prodsResult] = await Promise.allSettled([
       fetchJson(CONFIG.GET_CATEGORIES(t)),
       fetchJson(CONFIG.GET_PRODUCTS(t)),
     ]);
 
-    if (!catsResp.ok) throw new Error(catsResp.error || "Categories endpoint failed");
-    if (!prodsResp.ok) throw new Error(prodsResp.error || "Products endpoint failed");
+    const prodsResp = prodsResult.status === "fulfilled" ? prodsResult.value : null;
+    if (!prodsResp || !prodsResp.ok) {
+      const reason = prodsResp?.error || prodsResult.reason || "Products endpoint failed";
+      throw new Error(reason);
+    }
 
-    const cats = normalizeCategoryRows(catsResp.categories || []);
+    const catsResp = catsResult.status === "fulfilled" ? catsResult.value : null;
+    if (catsResp && !catsResp.ok) {
+      log("Categories endpoint failed", catsResp.error);
+      showError(`Products loaded, but categories failed. (${catsResp.error || "Categories endpoint failed"})`);
+    } else if (catsResult.status === "rejected") {
+      log("Categories endpoint failed", catsResult.reason);
+      showError(`Products loaded, but categories failed. (${String(catsResult.reason)})`);
+    }
+
+    const cats = normalizeCategoryRows(catsResp?.categories || []);
     const prods = normalizeProductRows(prodsResp.products || []);
+
+    if (!prods.length) {
+      throw new Error("No products returned from Google Sheets. Verify your Products sheet has active rows.");
+    }
 
     state.categories = cats;
     state.products = prods;
@@ -977,7 +1001,7 @@ async function refreshCatalog({ force = false } = {}) {
     state.idx = Math.min(state.idx, Math.max(0, state.steps.length - 1));
 
     // Update timestamps
-    const iso = nowIso();
+    const iso = prodsResp.updated_at || catsResp?.updated_at || nowIso();
     state.lastCatalogIso = iso;
     localStorage.setItem(CACHE.UPDATED_AT, iso);
     localStorage.setItem(CACHE.CACHED_AT, iso);
