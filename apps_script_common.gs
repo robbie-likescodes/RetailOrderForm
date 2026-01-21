@@ -2,6 +2,7 @@ const CONFIG = {
   // Optional: set to a specific Google Sheet ID if running as a standalone script.
   // Leave blank to use the container-bound spreadsheet.
   spreadsheetId: "",
+  apiVersion: "2026-01-21",
   sheets: {
     categories: "Categories",
     products: "Products",
@@ -11,8 +12,12 @@ const CONFIG = {
 };
 
 function jsonResponse(payload) {
+  const base = Object.assign({}, payload, {
+    version: CONFIG.apiVersion,
+    timestamp: new Date().toISOString(),
+  });
   const output = ContentService
-    .createTextOutput(JSON.stringify(payload))
+    .createTextOutput(JSON.stringify(base))
     .setMimeType(ContentService.MimeType.JSON);
 
   return withCors_(output);
@@ -30,6 +35,8 @@ function withCors_(output) {
   output.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   output.setHeader("Access-Control-Allow-Headers", "Content-Type, Cache-Control, Pragma");
   output.setHeader("Access-Control-Max-Age", "3600");
+  output.setHeader("Cache-Control", "no-store, max-age=0");
+  output.setHeader("Pragma", "no-cache");
   return output;
 }
 
@@ -45,6 +52,27 @@ function buildError_(message, code, details, requestId) {
   if (details) payload.details = details;
 
   return payload;
+}
+
+function buildSuccess_(data, requestId) {
+  const payload = Object.assign({}, data, {
+    ok: true,
+    updated_at: new Date().toISOString(),
+  });
+  if (requestId) payload.request_id = requestId;
+  return payload;
+}
+
+function getAction_(e) {
+  if (e && e.parameter && e.parameter.action) return String(e.parameter.action).trim();
+  return "";
+}
+
+function getCorrelationId_(e, payload) {
+  const paramId = e && e.parameter && e.parameter.cid ? String(e.parameter.cid).trim() : "";
+  if (paramId) return paramId;
+  const bodyId = payload && payload.correlation_id ? String(payload.correlation_id).trim() : "";
+  return bodyId;
 }
 
 function normalizeHeader_(header) {

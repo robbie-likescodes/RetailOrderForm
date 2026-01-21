@@ -1,12 +1,13 @@
 function doGet(e) {
   const requestId = Utilities.getUuid();
   try {
-    const action = String((e && e.parameter && e.parameter.action) || "").trim();
+    const action = getAction_(e).toLowerCase();
+    Logger.log("doGet request %s action=%s cid=%s", requestId, action, getCorrelationId_(e));
     if (!action) {
       return jsonResponse(buildError_(
         "Missing action.",
         "MISSING_ACTION",
-        { expected: ["categories", "products", "order_history"] },
+        { expected: ["categories", "products", "listOrders", "health"] },
         requestId
       ));
     }
@@ -21,13 +22,11 @@ function doGet(e) {
         }))
         .sort((a, b) => a.sort - b.sort);
 
-      return jsonResponse({
-        ok: true,
+      return jsonResponse(buildSuccess_({
         action,
         request_id: requestId,
         categories: rows,
-        updated_at: new Date().toISOString(),
-      });
+      }, requestId));
     }
 
     if (action === "products") {
@@ -49,16 +48,14 @@ function doGet(e) {
         }))
         .sort((a, b) => a.sort - b.sort);
 
-      return jsonResponse({
-        ok: true,
+      return jsonResponse(buildSuccess_({
         action,
         request_id: requestId,
         products: rows,
-        updated_at: new Date().toISOString(),
-      });
+      }, requestId));
     }
 
-    if (action === "order_history") {
+    if (action === "order_history" || action === "listorders") {
       const getTime = (value) => {
         if (value instanceof Date) return value.getTime();
         const parsed = Date.parse(value);
@@ -102,23 +99,36 @@ function doGet(e) {
           return String(a.name || a.sku || "").localeCompare(String(b.name || b.sku || ""));
         });
 
-      return jsonResponse({
-        ok: true,
-        action,
+      return jsonResponse(buildSuccess_({
+        action: "listOrders",
         request_id: requestId,
         orders,
         items,
-        updated_at: new Date().toISOString(),
-      });
+      }, requestId));
+    }
+
+    if (action === "health") {
+      const categories = getSheetRows_(CONFIG.sheets.categories);
+      const products = getSheetRows_(CONFIG.sheets.products);
+      return jsonResponse(buildSuccess_({
+        action,
+        request_id: requestId,
+        sheet_id: CONFIG.spreadsheetId || SpreadsheetApp.getActiveSpreadsheet().getId(),
+        counts: {
+          categories: categories.length,
+          products: products.length,
+        },
+      }, requestId));
     }
 
     return jsonResponse(buildError_(
       `Unknown action: ${action}`,
       "UNKNOWN_ACTION",
-      { received: action, expected: ["categories", "products", "order_history"] },
+      { received: action, expected: ["categories", "products", "listOrders", "health"] },
       requestId
     ));
   } catch (err) {
+    Logger.log("doGet error %s: %s", requestId, err);
     return jsonResponse(buildError_(
       String(err),
       "UNHANDLED_ERROR",

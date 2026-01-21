@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <div id="globalBanner" class="banner" hidden></div>
   <header class="topbar">
     <div class="topbar__row">
       <div>
@@ -20,7 +21,7 @@
             <path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"></path>
           </svg>
         </a>
-        <button class="btn btn--ghost" id="deliveryRefreshBtn" type="button" aria-label="Refresh drivers from Google Sheets" title="Refresh drivers from Google Sheets">Refresh Orders</button>
+        <button class="btn btn--ghost" id="deliveryRefreshBtn" data-refresh="orders" type="button" aria-label="Refresh drivers from Google Sheets" title="Refresh drivers from Google Sheets">Refresh Orders</button>
       </div>
     </div>
   </header>
@@ -35,6 +36,9 @@
     </section>
   </main>
 
+  <div id="toastContainer" class="toastContainer"></div>
+
+  <script src="shared.js"></script>
   <script src="delivery.js"></script>
 </body>
 </html>

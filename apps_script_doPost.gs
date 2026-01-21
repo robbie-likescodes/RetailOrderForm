@@ -8,6 +8,18 @@ function doPost(e) {
   const requestId = Utilities.getUuid();
   try {
     const payload = parseJson_(e);
+    const action = getAction_(e).toLowerCase() || "submitorder";
+    Logger.log("doPost request %s action=%s cid=%s", requestId, action, getCorrelationId_(e, payload));
+
+    if (action !== "submitorder") {
+      return jsonResponse(buildError_(
+        `Unknown action: ${action}`,
+        "UNKNOWN_ACTION",
+        { expected: ["submitOrder"] },
+        requestId
+      ));
+    }
+
     const validationError = validateOrder_(payload);
     if (validationError) {
       return jsonResponse(buildError_(
@@ -55,12 +67,10 @@ function doPost(e) {
       ...itemCells,
     ]);
 
-    return jsonResponse({
-      ok: true,
+    return jsonResponse(buildSuccess_({
       order_id: orderId,
       request_id: requestId,
-      updated_at: createdAt,
-    });
+    }, requestId));
   } catch (err) {
     const message = err && err.message ? err.message : String(err);
     let errorCode = "UNHANDLED_ERROR";
@@ -69,6 +79,7 @@ function doPost(e) {
     if (message.indexOf("Unsupported content type:") === 0) {
       errorCode = "UNSUPPORTED_CONTENT_TYPE";
     }
+    Logger.log("doPost error %s: %s", requestId, message);
     return jsonResponse(buildError_(message, errorCode, null, requestId));
   }
 }

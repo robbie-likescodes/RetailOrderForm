@@ -1,270 +1,275 @@
 /**
- * Retail Order Portal - Google Apps Script Web App
- * -------------------------------------------------
+ * Retail Order Portal - Google Apps Script Web App (Full)
+ * -------------------------------------------------------
  * Endpoints:
  *  GET  /exec?action=categories
  *  GET  /exec?action=products
- *  POST /exec  (JSON body)
- *
- * Sheets expected:
- *  - Categories: category | sort | active | display_name
- *  - Products: item_no | sku | name | category | unit | pack_size | active | sort
- *  - Orders: order_id | timestamp | store | placed_by | phone | email | notes | items_json | items_summary | status | Product 1 | Qty 1 | ...
+ *  GET  /exec?action=listOrders
+ *  GET  /exec?action=health
+ *  POST /exec?action=submitOrder
  */
 
 const CONFIG = {
-  SHARED_TOKEN: "REPLACE_WITH_SECRET",
-  OFFICE_EMAIL: "office@example.com",
-  CACHE_TTL_SECONDS: 60 * 5,
-  SHEETS: {
-    CATEGORIES: "Categories",
-    PRODUCTS: "Products",
-    ORDERS: "Orders",
-    ORDER_ITEMS: "OrderItems",
+  spreadsheetId: "",
+  apiVersion: "2026-01-21",
+  sheets: {
+    categories: "Categories",
+    products: "Products",
+    orders: "Orders",
+    orderItems: "OrderItems",
   },
 };
 
 function doGet(e) {
+  const requestId = Utilities.getUuid();
   try {
-    const action = String((e && e.parameter && e.parameter.action) || "")
-      .trim()
-      .toLowerCase();
+    const action = getAction_(e).toLowerCase();
+    Logger.log("doGet request %s action=%s cid=%s", requestId, action, getCorrelationId_(e));
 
     if (!action) {
-      return jsonResponse({
-        ok: false,
-        error: "Missing action.",
-        updated_at: new Date().toISOString(),
-      });
+      return jsonResponse(buildError_(
+        "Missing action.",
+        "MISSING_ACTION",
+        { expected: ["categories", "products", "listOrders", "health"] },
+        requestId
+      ));
     }
 
     if (action === "categories") {
-      const cacheKey = "categories";
-      const cached = getCache_(cacheKey);
-      if (cached) return jsonResponse(cached);
-
-      const categories = getSheetRows_(CONFIG.SHEETS.CATEGORIES)
-        .filter(row => row.category && isRowActive_(row))
+      const rows = getSheetRows_(CONFIG.sheets.categories)
+        .filter(row => getFirstValue_(row, ["category", "category_name", "department", "dept"]) && isRowActive_(row))
         .map(row => ({
-          category: String(row.category || "").trim(),
-          display_name: String(row.display_name || row.category || "").trim(),
-          sort: Number(row.sort || 9999),
+          category: String(getFirstValue_(row, ["category", "category_name", "department", "dept"]) || "").trim(),
+          display_name: String(getFirstValue_(row, ["display_name", "display", "name", "category", "category_name"]) || "").trim(),
+          sort: Number(getFirstValue_(row, ["sort", "order", "display_order"]) || 9999),
         }))
         .sort((a, b) => a.sort - b.sort);
 
-      const payload = {
-        ok: true,
-        categories,
-        updated_at: new Date().toISOString(),
-      };
-      setCache_(cacheKey, payload);
-      return jsonResponse(payload);
+      return jsonResponse(buildSuccess_({ action, request_id: requestId, categories: rows }, requestId));
     }
 
     if (action === "products") {
-      const cacheKey = "products";
-      const cached = getCache_(cacheKey);
-      if (cached) return jsonResponse(cached);
-
-      const products = getSheetRows_(CONFIG.SHEETS.PRODUCTS)
-        .filter(row => row.sku && row.name && row.category && isRowActive_(row))
+      const rows = getSheetRows_(CONFIG.sheets.products)
+        .filter(row => {
+          const sku = getFirstValue_(row, ["sku", "product_sku", "item_sku", "id", "product_id"]);
+          const name = getFirstValue_(row, ["name", "product_name", "item_name", "description"]);
+          const category = getFirstValue_(row, ["category", "category_name", "department", "dept"]);
+          return sku && name && category && isRowActive_(row);
+        })
         .map(row => ({
+          item_no: String(getFirstValue_(row, ["item_no", "item_number", "item"]) || "").trim(),
+          sku: String(getFirstValue_(row, ["sku", "product_sku", "item_sku", "id", "product_id"]) || "").trim(),
+          name: String(getFirstValue_(row, ["name", "product_name", "item_name", "description"]) || "").trim(),
+          category: String(getFirstValue_(row, ["category", "category_name", "department", "dept"]) || "").trim(),
+          unit: String(getFirstValue_(row, ["unit", "uom"]) || "").trim(),
+          pack_size: String(getFirstValue_(row, ["pack_size", "pack", "case_size", "case_pack"]) || "").trim(),
+          sort: Number(getFirstValue_(row, ["sort", "order", "display_order"]) || 9999),
+        }))
+        .sort((a, b) => a.sort - b.sort);
+
+      return jsonResponse(buildSuccess_({ action, request_id: requestId, products: rows }, requestId));
+    }
+
+    if (action === "order_history" || action === "listorders") {
+      const getTime = (value) => {
+        if (value instanceof Date) return value.getTime();
+        const parsed = Date.parse(value);
+        return Number.isNaN(parsed) ? 0 : parsed;
+      };
+
+      const orders = getSheetRows_(CONFIG.sheets.orders)
+        .filter(row => row.order_id && row.store)
+        .map(row => ({
+          order_id: String(row.order_id || "").trim(),
+          created_at: String(row.created_at || row.timestamp || "").trim(),
+          store: String(row.store || "").trim(),
+          placed_by: String(row.placed_by || "").trim(),
+          email: String(row.email || "").trim(),
+          requested_date: String(row.requested_date || "").trim(),
+          notes: String(row.notes || "").trim(),
+          item_count: row.item_count || "",
+          total_qty: row.total_qty || "",
+        }))
+        .sort((a, b) => {
+          const storeCompare = String(a.store || "").localeCompare(String(b.store || ""));
+          if (storeCompare !== 0) return storeCompare;
+          return getTime(b.created_at) - getTime(a.created_at);
+        });
+
+      const items = getSheetRows_(CONFIG.sheets.orderItems)
+        .filter(row => row.order_id && row.sku)
+        .map(row => ({
+          order_id: String(row.order_id || "").trim(),
           item_no: String(row.item_no || "").trim(),
           sku: String(row.sku || "").trim(),
           name: String(row.name || "").trim(),
           category: String(row.category || "").trim(),
           unit: String(row.unit || "").trim(),
           pack_size: String(row.pack_size || "").trim(),
-          sort: Number(row.sort || 9999),
+          qty: row.qty || "",
         }))
-        .sort((a, b) => a.sort - b.sort);
+        .sort((a, b) => {
+          const orderCompare = String(a.order_id || "").localeCompare(String(b.order_id || ""));
+          if (orderCompare !== 0) return orderCompare;
+          return String(a.name || a.sku || "").localeCompare(String(b.name || b.sku || ""));
+        });
 
-      const payload = {
-        ok: true,
-        products,
-        updated_at: new Date().toISOString(),
-      };
-      setCache_(cacheKey, payload);
-      return jsonResponse(payload);
+      return jsonResponse(buildSuccess_({ action: "listOrders", request_id: requestId, orders, items }, requestId));
     }
 
-    if (action === "order_history") {
-      const rawOrders = getSheetRows_(CONFIG.SHEETS.ORDERS)
-        .filter(row => row.store);
-      const orders = rawOrders.map((row, index) => {
-        const items = extractOrderItems_(row);
-        const totals = items.reduce(
-          (acc, item) => {
-            acc.itemCount += 1;
-            acc.totalQty += Number(item.qty || 0);
-            return acc;
-          },
-          { itemCount: 0, totalQty: 0 }
-        );
-
-        const fallbackOrderId = `row_${index + 2}`;
-
-        return {
-          order_id: String(row.order_id || fallbackOrderId).trim(),
-          created_at: String(row.timestamp || "").trim(),
-          store: String(row.store || "").trim(),
-          placed_by: String(row.placed_by || "").trim(),
-          email: String(row.email || "").trim(),
-          notes: String(row.notes || "").trim(),
-          item_count: totals.itemCount,
-          total_qty: totals.totalQty,
-        };
-      });
-
-      const items = rawOrders.flatMap((row, index) => (
-        extractOrderItems_(row).map(item => ({
-          order_id: String(row.order_id || `row_${index + 2}`).trim(),
-          name: item.name,
-          qty: item.qty,
-        }))
-      ));
-
-      return jsonResponse({
-        ok: true,
-        orders,
-        items,
-        updated_at: new Date().toISOString(),
-      });
+    if (action === "health") {
+      const categories = getSheetRows_(CONFIG.sheets.categories);
+      const products = getSheetRows_(CONFIG.sheets.products);
+      return jsonResponse(buildSuccess_({
+        action,
+        request_id: requestId,
+        sheet_id: CONFIG.spreadsheetId || SpreadsheetApp.getActiveSpreadsheet().getId(),
+        counts: { categories: categories.length, products: products.length },
+      }, requestId));
     }
 
-    return jsonResponse({
-      ok: false,
-      error: `Unknown action: ${action}`,
-      updated_at: new Date().toISOString(),
-    });
+    return jsonResponse(buildError_(
+      `Unknown action: ${action}`,
+      "UNKNOWN_ACTION",
+      { received: action, expected: ["categories", "products", "listOrders", "health"] },
+      requestId
+    ));
   } catch (err) {
-    return jsonResponse({
-      ok: false,
-      error: String(err),
-      updated_at: new Date().toISOString(),
-    });
+    Logger.log("doGet error %s: %s", requestId, err);
+    return jsonResponse(buildError_(String(err), "UNHANDLED_ERROR", null, requestId));
   }
 }
 
 function doPost(e) {
+  const requestId = Utilities.getUuid();
   try {
     const payload = parseJson_(e);
-    const authError = validateToken_(payload);
-    if (authError) {
-      return jsonResponse({
-        ok: false,
-        error: authError,
-        updated_at: new Date().toISOString(),
-      });
+    const action = getAction_(e).toLowerCase() || "submitorder";
+    Logger.log("doPost request %s action=%s cid=%s", requestId, action, getCorrelationId_(e, payload));
+
+    if (action !== "submitorder") {
+      return jsonResponse(buildError_(
+        `Unknown action: ${action}`,
+        "UNKNOWN_ACTION",
+        { expected: ["submitOrder"] },
+        requestId
+      ));
     }
 
     const validationError = validateOrder_(payload);
     if (validationError) {
-      return jsonResponse({
-        ok: false,
-        error: validationError,
-        updated_at: new Date().toISOString(),
-      });
+      return jsonResponse(buildError_(
+        validationError.message,
+        validationError.code,
+        validationError.details,
+        requestId
+      ));
     }
 
     const orderId = Utilities.getUuid();
-    const createdAt = new Date().toISOString();
     const maxProducts = 100;
 
     const normalized = normalizeItems_(payload.items);
     if (normalized.rejected.length) {
-      return jsonResponse({
-        ok: false,
-        error: "Order has invalid items.",
-        details: { rejected_items: normalized.rejected },
-        updated_at: createdAt,
-      });
+      return jsonResponse(buildError_(
+        "Order has invalid items.",
+        "INVALID_ITEMS",
+        { rejected_items: normalized.rejected },
+        requestId
+      ));
     }
 
-    const totals = normalized.items.reduce(
-      (acc, item) => {
-        acc.itemCount += 1;
-        acc.totalQty += item.qty;
-        return acc;
-      },
-      { itemCount: 0, totalQty: 0 }
+    const ordersSheet = ensureSheet_(
+      CONFIG.sheets.orders,
+      buildOrderHeaders_(maxProducts)
     );
 
-    const lock = LockService.getDocumentLock();
-    lock.waitLock(10000);
+    const itemCells = buildProductCells_(normalized.items, maxProducts);
 
-    try {
-      const ordersSheet = ensureSheet_(
-        CONFIG.SHEETS.ORDERS,
-        buildOrderHeaders_(maxProducts)
-      );
+    ordersSheet.appendRow([
+      orderId,
+      payload.timestamp,
+      payload.store,
+      payload.placed_by,
+      payload.phone || "",
+      payload.email || "",
+      payload.notes || "",
+      JSON.stringify(normalized.items),
+      buildItemsSummary_(normalized.items),
+      payload.status || "",
+      ...itemCells,
+    ]);
 
-      const itemCells = buildProductCells_(normalized.items, maxProducts);
-
-      ordersSheet.appendRow([
-        orderId,
-        payload.timestamp,
-        payload.store,
-        payload.placed_by,
-        payload.phone || "",
-        payload.email || "",
-        payload.notes || "",
-        JSON.stringify(normalized.items),
-        buildItemsSummary_(normalized.items),
-        payload.status || "",
-        ...itemCells,
-      ]);
-    } finally {
-      lock.releaseLock();
-    }
-
-    maybeSendEmail_(orderId, payload, normalized.items, totals);
-
-    return jsonResponse({
-      ok: true,
-      order_id: orderId,
-      updated_at: createdAt,
-    });
+    return jsonResponse(buildSuccess_({ order_id: orderId, request_id: requestId }, requestId));
   } catch (err) {
-    return jsonResponse({
-      ok: false,
-      error: String(err),
-      updated_at: new Date().toISOString(),
-    });
+    const message = err && err.message ? err.message : String(err);
+    Logger.log("doPost error %s: %s", requestId, message);
+    return jsonResponse(buildError_(message, "UNHANDLED_ERROR", null, requestId));
   }
+}
+
+function doOptions() {
+  const output = ContentService.createTextOutput("")
+    .setMimeType(ContentService.MimeType.JSON);
+
+  return withCors_(output);
 }
 
 function jsonResponse(payload) {
-  return ContentService
-    .createTextOutput(JSON.stringify(payload))
+  const base = Object.assign({}, payload, {
+    version: CONFIG.apiVersion,
+    timestamp: new Date().toISOString(),
+  });
+  const output = ContentService
+    .createTextOutput(JSON.stringify(base))
     .setMimeType(ContentService.MimeType.JSON);
+
+  return withCors_(output);
 }
 
-function parseJson_(e) {
-  if (!e || !e.postData || !e.postData.contents) {
-    throw new Error("Missing JSON body.");
-  }
-
-  try {
-    return JSON.parse(e.postData.contents);
-  } catch (err) {
-    throw new Error("Invalid JSON body.");
-  }
+function withCors_(output) {
+  output.setHeader("Access-Control-Allow-Origin", "*");
+  output.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  output.setHeader("Access-Control-Allow-Headers", "Content-Type, Cache-Control, Pragma");
+  output.setHeader("Access-Control-Max-Age", "3600");
+  output.setHeader("Cache-Control", "no-store, max-age=0");
+  output.setHeader("Pragma", "no-cache");
+  return output;
 }
 
-function validateToken_(payload) {
-  if (!CONFIG.SHARED_TOKEN) return "";
-  if (!payload || !payload.token) return "Missing token.";
-  if (payload.token !== CONFIG.SHARED_TOKEN) return "Unauthorized.";
+function buildError_(message, code, details, requestId) {
+  const payload = {
+    ok: false,
+    error: message,
+    error_code: code || "UNKNOWN_ERROR",
+    updated_at: new Date().toISOString(),
+  };
+
+  if (requestId) payload.request_id = requestId;
+  if (details) payload.details = details;
+
+  return payload;
+}
+
+function buildSuccess_(data, requestId) {
+  const payload = Object.assign({}, data, {
+    ok: true,
+    updated_at: new Date().toISOString(),
+  });
+  if (requestId) payload.request_id = requestId;
+  return payload;
+}
+
+function getAction_(e) {
+  if (e && e.parameter && e.parameter.action) return String(e.parameter.action).trim();
   return "";
 }
 
-function validateOrder_(payload) {
-  if (!payload) return "Missing order payload.";
-  if (!payload.store) return "Store is required.";
-  if (!payload.timestamp) return "Timestamp is required.";
-  if (!payload.placed_by) return "Placed by is required.";
-  return "";
+function getCorrelationId_(e, payload) {
+  const paramId = e && e.parameter && e.parameter.cid ? String(e.parameter.cid).trim() : "";
+  if (paramId) return paramId;
+  const bodyId = payload && payload.correlation_id ? String(payload.correlation_id).trim() : "";
+  return bodyId;
 }
 
 function normalizeHeader_(header) {
@@ -275,8 +280,20 @@ function normalizeHeader_(header) {
     .replace(/[^\w]/g, "");
 }
 
+function getFirstValue_(row, keys) {
+  if (!row || typeof row !== "object") return null;
+  for (var i = 0; i < keys.length; i += 1) {
+    var key = keys[i];
+    if (!Object.prototype.hasOwnProperty.call(row, key)) continue;
+    var value = row[key];
+    if (value === "" || value === null || typeof value === "undefined") continue;
+    return value;
+  }
+  return null;
+}
+
 function getSheetRows_(sheetName) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet_();
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
     throw new Error(`Missing sheet: ${sheetName}`);
@@ -294,14 +311,84 @@ function getSheetRows_(sheetName) {
     }, {}));
 }
 
+function getSpreadsheet_() {
+  if (CONFIG.spreadsheetId) {
+    return SpreadsheetApp.openById(CONFIG.spreadsheetId);
+  }
+  return SpreadsheetApp.getActiveSpreadsheet();
+}
+
 function isRowActive_(row) {
-  if (!Object.prototype.hasOwnProperty.call(row, "active")) return true;
-  const raw = row.active;
+  const raw = getFirstValue_(row, [
+    "active",
+    "enabled",
+    "is_active",
+    "is_enabled",
+    "status",
+  ]);
+  if (raw === null) return true;
   if (raw === true) return true;
   if (raw === false || raw === 0) return false;
   const normalized = String(raw || "").trim().toLowerCase();
   if (!normalized) return false;
-  return ["true", "yes", "y", "1"].includes(normalized);
+  if (["false", "no", "n", "0", "inactive", "disabled"].includes(normalized)) return false;
+  return ["true", "yes", "y", "1", "active", "enabled"].includes(normalized);
+}
+
+function extractOrderItems_(row) {
+  const items = [];
+  const productKeys = Object.keys(row || {})
+    .filter(key => key.startsWith("product_"))
+    .map(key => {
+      const match = key.match(/^product_(\d+)$/);
+      return match ? Number(match[1]) : null;
+    })
+    .filter(num => Number.isFinite(num))
+    .sort((a, b) => a - b);
+
+  productKeys.forEach((num) => {
+    const name = String(row[`product_${num}`] || "").trim();
+    const qty = row[`qty_${num}`];
+    if (!name && (qty === "" || qty === null || typeof qty === "undefined")) {
+      return;
+    }
+    items.push({ name, qty });
+  });
+
+  return items;
+}
+
+function parseJson_(e) {
+  if (!e || !e.postData || !e.postData.contents) {
+    throw new Error("Missing JSON body.");
+  }
+
+  const contentType = String(e.postData.type || "").toLowerCase();
+  if (contentType && !contentType.includes("application/json")) {
+    throw new Error(`Unsupported content type: ${e.postData.type}`);
+  }
+
+  try {
+    return JSON.parse(e.postData.contents);
+  } catch (err) {
+    throw new Error("Invalid JSON body.");
+  }
+}
+
+function validateOrder_(payload) {
+  if (!payload) {
+    return { message: "Missing order payload.", code: "MISSING_PAYLOAD" };
+  }
+  if (!payload.store) {
+    return { message: "Store is required.", code: "MISSING_STORE" };
+  }
+  if (!payload.timestamp) {
+    return { message: "Timestamp is required.", code: "MISSING_TIMESTAMP" };
+  }
+  if (!payload.placed_by) {
+    return { message: "Placed by is required.", code: "MISSING_PLACED_BY" };
+  }
+  return null;
 }
 
 function normalizeItems_(items) {
@@ -313,7 +400,6 @@ function normalizeItems_(items) {
       name: String(item.name || "").trim(),
       qty: Number(item.qty || 0),
     };
-
     const reasons = [];
     if (!normalized.name) reasons.push("Missing name.");
     if (!Number.isFinite(normalized.qty) || normalized.qty <= 0) {
@@ -371,7 +457,7 @@ function buildItemsSummary_(items) {
 }
 
 function ensureSheet_(name, headers) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet_();
   let sheet = ss.getSheetByName(name);
   if (!sheet) sheet = ss.insertSheet(name);
 
@@ -380,61 +466,4 @@ function ensureSheet_(name, headers) {
   }
 
   return sheet;
-}
-
-function getCache_(key) {
-  const cache = CacheService.getScriptCache();
-  const raw = cache.get(key);
-  return raw ? JSON.parse(raw) : null;
-}
-
-function setCache_(key, value) {
-  CacheService.getScriptCache().put(
-    key,
-    JSON.stringify(value),
-    CONFIG.CACHE_TTL_SECONDS
-  );
-}
-
-function maybeSendEmail_(orderId, payload, items, totals) {
-  if (!CONFIG.OFFICE_EMAIL) return;
-
-  const itemsSummary = items
-    .map(item => `${item.qty}x ${item.name}`)
-    .join("\n");
-
-  MailApp.sendEmail({
-    to: CONFIG.OFFICE_EMAIL,
-    subject: `Retail Order ${orderId} — ${payload.store}`,
-    body:
-      `New retail order\n\n` +
-      `Store: ${payload.store}\n` +
-      `Placed by: ${payload.placed_by}\n` +
-      `Email: ${payload.email || ""}\n` +
-      `Notes: ${payload.notes || ""}\n` +
-      `Items (${totals.itemCount} / qty ${totals.totalQty}):\n${itemsSummary}`,
-  });
-}
-
-function extractOrderItems_(row) {
-  const items = [];
-  const productKeys = Object.keys(row || {})
-    .filter(key => key.startsWith("product_"))
-    .map(key => {
-      const match = key.match(/^product_(\d+)$/);
-      return match ? Number(match[1]) : null;
-    })
-    .filter(num => Number.isFinite(num))
-    .sort((a, b) => a - b);
-
-  productKeys.forEach((num) => {
-    const name = String(row[`product_${num}`] || "").trim();
-    const qty = row[`qty_${num}`];
-    if (!name && (qty === "" || qty === null || typeof qty === "undefined")) {
-      return;
-    }
-    items.push({ name, qty });
-  });
-
-  return items;
 }
