@@ -1042,8 +1042,20 @@ async function refreshCatalog({ force = false, background = false } = {}) {
     AppClient.showToast(`Loaded ${cats.length} categories and ${prods.length} products.`, "success");
   } catch (err) {
     const message = `Could not refresh catalog. ${err.userMessage || err.message || err}`;
+    const requestUrl = err?.request?.url || AppClient.getBaseUrl();
+    const hint = err?.isNetworkError
+      ? "Network/CORS/deployment issue likely. Verify the Apps Script /exec URL is publicly accessible."
+      : "Check the Apps Script deployment permissions and response payload.";
+    const bannerMessage = `${message} ${hint} URL: ${requestUrl}`;
+    log("Catalog refresh failed", {
+      message,
+      request: err?.request,
+      responseStatus: err?.response?.status,
+      responseText: err?.response?.text,
+      isNetworkError: err?.isNetworkError || err?.name === "TypeError",
+    });
     showError(message);
-    showGlobalError(message, "warning");
+    showGlobalError(bannerMessage, "warning");
     AppClient.showToast("Using cached data (if available).", "warning");
     buildSteps();
     if (state.selectedCategory) {
