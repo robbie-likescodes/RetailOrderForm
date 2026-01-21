@@ -86,6 +86,7 @@ const ui = {
   placedBy: $("placedBy"),
   email: $("email"),
   notes: $("notes"),
+  orderMeta: $("orderMeta"),
 
   orderPanel: $("orderPanel"),
   wizard: $("wizard"),
@@ -1119,6 +1120,7 @@ function setActiveTab(tab) {
   state.activeTab = tab === "reports" ? "reports" : "order";
   setHidden(ui.orderPanel, state.activeTab !== "order");
   setHidden(ui.reportsPanel, state.activeTab !== "reports");
+  setHidden(ui.orderMeta, state.activeTab === "reports");
 
   if (ui.orderTabBtn) ui.orderTabBtn.classList.toggle("is-active", state.activeTab === "order");
   if (ui.reportsTabBtn) ui.reportsTabBtn.classList.toggle("is-active", state.activeTab === "reports");
