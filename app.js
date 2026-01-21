@@ -714,6 +714,13 @@ function buildQtySelectOptions(currentQty) {
   return options.join("");
 }
 
+function resetQuantitiesForNewOrder() {
+  state.quantities = {};
+  state.dirty = false;
+  saveCache();
+  renderSelectedSummary();
+}
+
 // =========================
 // RENDER: CATALOG / ITEMS
 // =========================
@@ -1638,6 +1645,9 @@ async function submitOrder() {
 // =========================
 function wireEvents() {
   ui.homeOrder?.addEventListener("click", () => {
+    resetQuantitiesForNewOrder();
+    state.selectedCategory = "";
+    renderWizard();
     setActiveTab("order");
     showOrderApp();
   });
