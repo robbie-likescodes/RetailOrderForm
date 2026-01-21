@@ -6,6 +6,7 @@ const CONFIG = {
   officeEmail: "",
   auth: {
     requireToken: false,
+    // Token auth intentionally disabled for "anyone with link" mode.
     sharedToken: "",
   },
   sheets: {

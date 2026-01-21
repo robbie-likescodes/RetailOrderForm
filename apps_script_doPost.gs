@@ -142,14 +142,15 @@ function parseJson_(e) {
 }
 
 function validateToken_(payload) {
-  if (!CONFIG.auth || !CONFIG.auth.requireToken) return null;
-  const expected = String(CONFIG.auth.sharedToken || "");
-  if (!expected) {
-    return { message: "Token validation is enabled but no shared token is configured.", code: "TOKEN_NOT_CONFIGURED" };
+  const auth = CONFIG.auth || {};
+  const expected = String(auth.sharedToken || "").trim();
+  if (!expected || !auth.requireToken) {
+    // Token auth intentionally disabled for "anyone with link" mode.
+    return null;
   }
   const provided = payload && payload.token ? String(payload.token) : "";
-  if (!provided || provided !== expected) {
-    return { message: "Invalid or missing token.", code: "INVALID_TOKEN" };
+  if (provided !== expected) {
+    return { message: "Invalid token.", code: "INVALID_TOKEN" };
   }
   return null;
 }

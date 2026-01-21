@@ -8,7 +8,7 @@
  * - “Refresh Products” button with confirmation and graceful fallback to cache
  * - Review screen with inline edits
  * - Submit (POST) wired (will fail gracefully until you add doPost in Apps Script)
- * - Token support via URL ?token=XXXX and optional store lock via ?store=Boniface
+ * - Optional store lock via URL ?store=Boniface
  * - Basic input validation and error surfaces
  *
  * Required HTML element IDs expected (matches index.html):
@@ -30,7 +30,6 @@ const CONFIG = {
   CONFIRM_REFRESH_IF_DIRTY: true,
   AUTOFOCUS_QTY: true,
   HIDE_EMPTY_CATEGORIES: true,
-  REQUIRE_TOKEN: false,
 
   // Validation
   MAX_QTY: 9999,
@@ -42,10 +41,9 @@ const CONFIG = {
 };
 
 // =========================
-// URL PARAMS / TOKEN
+// URL PARAMS
 // =========================
 const urlParams = new URLSearchParams(window.location.search);
-const TOKEN = urlParams.get("token") || "";                 // optional shared key / store token
 const STORE_LOCK = urlParams.get("store") || "";            // optional store prefill/lock
 const VIEW = (urlParams.get("view") || "").toLowerCase();
 const DEBUG = window.DEBUG === true;
@@ -1626,11 +1624,6 @@ async function submitOrder() {
   showSubmitError("");
   showSubmitSuccess("");
 
-  if (CONFIG.REQUIRE_TOKEN && !TOKEN) {
-    showSubmitError("Missing security token. Please use the authorized order link.");
-    return;
-  }
-
   const metaErr = validateMeta();
   if (metaErr) { showSubmitError(metaErr); return; }
 
@@ -1638,7 +1631,6 @@ async function submitOrder() {
   if (items.length === 0) { showSubmitError("No items selected."); return; }
 
   const payload = {
-    token: TOKEN || undefined,
     store: state.meta.store,
     placed_by: state.meta.placed_by,
     timestamp: nowIso(),
