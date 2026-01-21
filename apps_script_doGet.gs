@@ -13,11 +13,11 @@ function doGet(e) {
 
     if (action === "categories") {
       const rows = getSheetRows_(CONFIG.sheets.categories)
-        .filter(row => row.category && isRowActive_(row))
+        .filter(row => getFirstValue_(row, ["category", "category_name", "department", "dept"]) && isRowActive_(row))
         .map(row => ({
-          category: String(row.category || "").trim(),
-          display_name: String(row.display_name || row.category || "").trim(),
-          sort: Number(row.sort || 9999),
+          category: String(getFirstValue_(row, ["category", "category_name", "department", "dept"]) || "").trim(),
+          display_name: String(getFirstValue_(row, ["display_name", "display", "name", "category", "category_name"]) || "").trim(),
+          sort: Number(getFirstValue_(row, ["sort", "order", "display_order"]) || 9999),
         }))
         .sort((a, b) => a.sort - b.sort);
 
@@ -32,15 +32,20 @@ function doGet(e) {
 
     if (action === "products") {
       const rows = getSheetRows_(CONFIG.sheets.products)
-        .filter(row => row.sku && row.name && row.category && isRowActive_(row))
+        .filter(row => {
+          const sku = getFirstValue_(row, ["sku", "product_sku", "item_sku", "id", "product_id"]);
+          const name = getFirstValue_(row, ["name", "product_name", "item_name", "description"]);
+          const category = getFirstValue_(row, ["category", "category_name", "department", "dept"]);
+          return sku && name && category && isRowActive_(row);
+        })
         .map(row => ({
-          item_no: String(row.item_no || "").trim(),
-          sku: String(row.sku || "").trim(),
-          name: String(row.name || "").trim(),
-          category: String(row.category || "").trim(),
-          unit: String(row.unit || "").trim(),
-          pack_size: String(row.pack_size || "").trim(),
-          sort: Number(row.sort || 9999),
+          item_no: String(getFirstValue_(row, ["item_no", "item_number", "item"]) || "").trim(),
+          sku: String(getFirstValue_(row, ["sku", "product_sku", "item_sku", "id", "product_id"]) || "").trim(),
+          name: String(getFirstValue_(row, ["name", "product_name", "item_name", "description"]) || "").trim(),
+          category: String(getFirstValue_(row, ["category", "category_name", "department", "dept"]) || "").trim(),
+          unit: String(getFirstValue_(row, ["unit", "uom"]) || "").trim(),
+          pack_size: String(getFirstValue_(row, ["pack_size", "pack", "case_size", "case_pack"]) || "").trim(),
+          sort: Number(getFirstValue_(row, ["sort", "order", "display_order"]) || 9999),
         }))
         .sort((a, b) => a.sort - b.sort);
 

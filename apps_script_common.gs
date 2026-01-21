@@ -1,4 +1,7 @@
 const CONFIG = {
+  // Optional: set to a specific Google Sheet ID if running as a standalone script.
+  // Leave blank to use the container-bound spreadsheet.
+  spreadsheetId: "",
   sheets: {
     categories: "Categories",
     products: "Products",
@@ -25,7 +28,7 @@ function doOptions() {
 function withCors_(output) {
   output.setHeader("Access-Control-Allow-Origin", "*");
   output.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  output.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  output.setHeader("Access-Control-Allow-Headers", "Content-Type, Cache-Control, Pragma");
   output.setHeader("Access-Control-Max-Age", "3600");
   return output;
 }
@@ -52,8 +55,20 @@ function normalizeHeader_(header) {
     .replace(/[^\w]/g, "");
 }
 
+function getFirstValue_(row, keys) {
+  if (!row || typeof row !== "object") return null;
+  for (var i = 0; i < keys.length; i += 1) {
+    var key = keys[i];
+    if (!Object.prototype.hasOwnProperty.call(row, key)) continue;
+    var value = row[key];
+    if (value === "" || value === null || typeof value === "undefined") continue;
+    return value;
+  }
+  return null;
+}
+
 function getSheetRows_(sheetName) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet_();
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
     throw new Error(`Missing sheet: ${sheetName}`);
@@ -71,14 +86,28 @@ function getSheetRows_(sheetName) {
     }, {}));
 }
 
+function getSpreadsheet_() {
+  if (CONFIG.spreadsheetId) {
+    return SpreadsheetApp.openById(CONFIG.spreadsheetId);
+  }
+  return SpreadsheetApp.getActiveSpreadsheet();
+}
+
 function isRowActive_(row) {
-  if (!Object.prototype.hasOwnProperty.call(row, "active")) return true;
-  const raw = row.active;
+  const raw = getFirstValue_(row, [
+    "active",
+    "enabled",
+    "is_active",
+    "is_enabled",
+    "status",
+  ]);
+  if (raw === null) return true;
   if (raw === true) return true;
   if (raw === false || raw === 0) return false;
   const normalized = String(raw || "").trim().toLowerCase();
   if (!normalized) return false;
-  return ["true", "yes", "y", "1"].includes(normalized);
+  if (["false", "no", "n", "0", "inactive", "disabled"].includes(normalized)) return false;
+  return ["true", "yes", "y", "1", "active", "enabled"].includes(normalized);
 }
 
 function extractOrderItems_(row) {

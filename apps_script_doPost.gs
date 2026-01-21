@@ -172,7 +172,7 @@ function buildItemsSummary_(items) {
 }
 
 function ensureSheet_(name, headers) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet_();
   let sheet = ss.getSheetByName(name);
   if (!sheet) sheet = ss.insertSheet(name);
 
