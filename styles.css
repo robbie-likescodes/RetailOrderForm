@@ -303,6 +303,7 @@ body{
 .meta__row{ display: grid; gap: var(--gap); grid-template-columns: 1fr 1fr; }
 
 .field{ display:grid; gap: 8px; }
+.field{ min-width: 0; }
 .field span{ font-size: 13px; color: var(--muted); text-transform: none; letter-spacing: 0.01em; }
 
 input, select, textarea{
@@ -818,6 +819,40 @@ textarea:focus{
   .card__header{ flex-direction: column; align-items: flex-start; }
   .orderRow{ flex-direction: column; align-items: flex-start; gap: 8px; }
   .deliveryOrder summary{ flex-direction: column; align-items: flex-start; }
+}
+
+@media (max-width: 720px){
+  .reports__header{
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .reports__summary{
+    grid-auto-flow: row;
+    width: 100%;
+  }
+
+  .reports__metric{
+    min-width: 0;
+    width: 100%;
+  }
+
+  .reports__filters,
+  .reports__filters--compact{
+    grid-template-columns: 1fr;
+  }
+
+  .reports__hint{
+    margin-top: 0;
+  }
+
+  .table{
+    min-width: 0;
+  }
+
+  .tableWrap{
+    overflow-x: auto;
+  }
 }
 
 .banner{
