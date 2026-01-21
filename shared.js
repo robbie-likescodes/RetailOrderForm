@@ -193,6 +193,7 @@
       timeoutMs = DEFAULT_TIMEOUT_MS,
       retry = 1,
       cacheBust = true,
+      onRequest,
     } = options;
 
     const correlationId = createCorrelationId();
@@ -224,10 +225,18 @@
 
     const attemptFetch = async (attempt) => {
       try {
+        if (typeof onRequest === "function") {
+          onRequest({
+            url: url.toString(),
+            method,
+            correlationId,
+          });
+        }
         log("Request", { method, url: url.toString() });
         const res = await fetch(url.toString(), fetchOptions);
         const contentType = res.headers.get("content-type") || "";
         const text = await res.text();
+        const parsedJson = safeJsonParse(text);
 
         log("Response", {
           status: res.status,
@@ -246,10 +255,12 @@
         if (!res.ok) {
           const err = new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
           err.status = res.status;
+          err.responseText = text;
+          if (parsedJson) err.responseJson = parsedJson;
           throw err;
         }
 
-        const data = safeJsonParse(text);
+        const data = parsedJson;
         if (!data) {
           const err = new Error("Failed to parse JSON response.");
           err.raw = text;
@@ -259,6 +270,9 @@
         if (data.ok === false) {
           const err = new Error(data.error || "Request failed.");
           err.payload = data;
+          err.status = res.status;
+          err.responseJson = data;
+          err.responseText = text;
           throw err;
         }
 
