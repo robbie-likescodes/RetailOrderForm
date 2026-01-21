@@ -10,6 +10,7 @@ function doPost(e) {
     const payload = parseJson_(e);
     const action = getAction_(e).toLowerCase() || "submitorder";
     Logger.log("doPost request %s action=%s cid=%s", requestId, action, getCorrelationId_(e, payload));
+    Logger.log("doPost parseJson ok requestId=%s", requestId);
 
     if (action !== "submitorder") {
       return jsonResponse(buildError_(
@@ -20,8 +21,22 @@ function doPost(e) {
       ));
     }
 
+    const tokenError = validateToken_(payload);
+    if (tokenError) {
+      Logger.log("doPost validateToken failed requestId=%s", requestId);
+      logOrderError_(requestId, "validateToken", tokenError.message, payload);
+      return jsonResponse(buildError_(
+        tokenError.message,
+        tokenError.code,
+        tokenError.details,
+        requestId
+      ));
+    }
+
     const validationError = validateOrder_(payload);
     if (validationError) {
+      Logger.log("doPost validateOrder failed requestId=%s", requestId);
+      logOrderError_(requestId, "validateOrder", validationError.message, payload);
       return jsonResponse(buildError_(
         validationError.message,
         validationError.code,
@@ -31,11 +46,13 @@ function doPost(e) {
     }
 
     const orderId = Utilities.getUuid();
-    const createdAt = new Date().toISOString();
     const maxProducts = 100;
+    const orderHeaders = buildOrderHeaders_(maxProducts);
 
     const normalized = normalizeItems_(payload.items);
     if (normalized.rejected.length) {
+      Logger.log("doPost normalizeItems rejected requestId=%s", requestId);
+      logOrderError_(requestId, "normalizeItems", "Invalid items.", payload, normalized.rejected);
       return jsonResponse(buildError_(
         "Order has invalid items.",
         "INVALID_ITEMS",
@@ -46,14 +63,22 @@ function doPost(e) {
 
     const itemsSummary = buildItemsSummary_(normalized.items);
 
-    const ordersSheet = ensureSheet_(
-      CONFIG.sheets.orders,
-      buildOrderHeaders_(maxProducts)
-    );
+    const ordersSheet = ensureSheet_(CONFIG.sheets.orders, orderHeaders);
+    const headerError = validateOrdersHeader_(ordersSheet, orderHeaders);
+    if (headerError) {
+      Logger.log("doPost validateHeaders failed requestId=%s", requestId);
+      logOrderError_(requestId, "validateHeaders", headerError.message, payload, headerError.details);
+      return jsonResponse(buildError_(
+        headerError.message,
+        headerError.code,
+        headerError.details,
+        requestId
+      ));
+    }
 
     const itemCells = buildProductCells_(normalized.items, maxProducts);
 
-    ordersSheet.appendRow([
+    const row = [
       orderId,
       payload.timestamp,
       payload.store,
@@ -65,12 +90,26 @@ function doPost(e) {
       itemsSummary,
       payload.status || "",
       ...itemCells,
-    ]);
+    ];
 
-    return jsonResponse(buildSuccess_({
-      order_id: orderId,
-      request_id: requestId,
-    }, requestId));
+    if (row.length !== orderHeaders.length) {
+      const errorMessage = `Order row length mismatch. Expected ${orderHeaders.length}, got ${row.length}.`;
+      Logger.log("doPost row length mismatch requestId=%s", requestId);
+      logOrderError_(requestId, "appendRow", errorMessage, payload, { expected: orderHeaders.length, actual: row.length });
+      return jsonResponse(buildError_(errorMessage, "ROW_LENGTH_MISMATCH", null, requestId));
+    }
+
+    Logger.log("doPost appendRow requestId=%s", requestId);
+    ordersSheet.appendRow(row);
+
+    Logger.log("doPost sendEmail requestId=%s", requestId);
+    const emailError = sendOfficeEmail_(payload, orderId, itemsSummary);
+
+    const response = { order_id: orderId, request_id: requestId };
+    if (emailError) {
+      response.warnings = [{ code: "EMAIL_FAILED", message: emailError }];
+    }
+    return jsonResponse(buildSuccess_(response, requestId));
   } catch (err) {
     const message = err && err.message ? err.message : String(err);
     let errorCode = "UNHANDLED_ERROR";
@@ -80,6 +119,7 @@ function doPost(e) {
       errorCode = "UNSUPPORTED_CONTENT_TYPE";
     }
     Logger.log("doPost error %s: %s", requestId, message);
+    logOrderError_(requestId, "unhandled", message, null, err);
     return jsonResponse(buildError_(message, errorCode, null, requestId));
   }
 }
@@ -90,7 +130,7 @@ function parseJson_(e) {
   }
 
   const contentType = String(e.postData.type || "").toLowerCase();
-  if (contentType && !contentType.includes("application/json")) {
+  if (contentType && !(contentType.includes("application/json") || contentType.includes("text/plain"))) {
     throw new Error(`Unsupported content type: ${e.postData.type}`);
   }
 
@@ -99,6 +139,19 @@ function parseJson_(e) {
   } catch (err) {
     throw new Error("Invalid JSON body.");
   }
+}
+
+function validateToken_(payload) {
+  if (!CONFIG.auth || !CONFIG.auth.requireToken) return null;
+  const expected = String(CONFIG.auth.sharedToken || "");
+  if (!expected) {
+    return { message: "Token validation is enabled but no shared token is configured.", code: "TOKEN_NOT_CONFIGURED" };
+  }
+  const provided = payload && payload.token ? String(payload.token) : "";
+  if (!provided || provided !== expected) {
+    return { message: "Invalid or missing token.", code: "INVALID_TOKEN" };
+  }
+  return null;
 }
 
 function validateOrder_(payload) {
@@ -167,6 +220,33 @@ function buildOrderHeaders_(maxProducts) {
   return headers;
 }
 
+function validateOrdersHeader_(sheet, expectedHeaders) {
+  if (!sheet || !expectedHeaders || !expectedHeaders.length) return null;
+  const lastColumn = Math.max(sheet.getLastColumn(), expectedHeaders.length);
+  const actual = sheet.getRange(1, 1, 1, lastColumn).getValues()[0].map(cell => String(cell || "").trim());
+  const expected = expectedHeaders.map(header => String(header || "").trim());
+  const mismatches = [];
+
+  expected.forEach((header, index) => {
+    const actualValue = actual[index] || "";
+    if (actualValue !== header) {
+      mismatches.push({ index: index + 1, expected: header, actual: actualValue });
+    }
+  });
+
+  const extra = actual.slice(expected.length).filter(value => String(value || "").trim() !== "");
+  if (extra.length) {
+    mismatches.push({ index: expected.length + 1, expected: "(no extra columns)", actual: extra.join(", ") });
+  }
+
+  if (!mismatches.length) return null;
+  return {
+    message: "Orders sheet header mismatch. Fix row 1 headers before submitting orders.",
+    code: "HEADER_MISMATCH",
+    details: { mismatches },
+  };
+}
+
 function buildProductCells_(items, maxProducts) {
   const cells = new Array(maxProducts * 2).fill("");
   items.slice(0, maxProducts).forEach((item, index) => {
@@ -180,6 +260,48 @@ function buildItemsSummary_(items) {
   return items
     .map(item => `${item.name} x${item.qty}`)
     .join(", ");
+}
+
+function sendOfficeEmail_(payload, orderId, itemsSummary) {
+  if (!CONFIG.officeEmail) return "";
+  try {
+    const subject = `New Retail Order ${orderId}`;
+    const bodyLines = [
+      `Order ID: ${orderId}`,
+      `Store: ${payload.store || ""}`,
+      `Placed by: ${payload.placed_by || ""}`,
+      `Requested date: ${payload.requested_date || ""}`,
+      `Email: ${payload.email || ""}`,
+      `Notes: ${payload.notes || ""}`,
+      `Items: ${itemsSummary || ""}`,
+      "",
+      "Raw Items JSON:",
+      JSON.stringify(payload.items || [], null, 2),
+    ];
+    MailApp.sendEmail(CONFIG.officeEmail, subject, bodyLines.join("\n"));
+    return "";
+  } catch (err) {
+    Logger.log("sendOfficeEmail error: %s", err);
+    return err && err.message ? err.message : String(err);
+  }
+}
+
+function logOrderError_(requestId, stage, message, payload, err) {
+  try {
+    const sheet = ensureSheet_(CONFIG.sheets.orderErrors, [
+      "timestamp",
+      "request_id",
+      "stage",
+      "message",
+      "stack",
+      "payload_json",
+    ]);
+    const stack = err && err.stack ? err.stack : "";
+    const payloadJson = payload ? JSON.stringify(payload) : "";
+    sheet.appendRow([new Date().toISOString(), requestId || "", stage || "", message || "", stack, payloadJson]);
+  } catch (error) {
+    Logger.log("logOrderError failed: %s", error);
+  }
 }
 
 function ensureSheet_(name, headers) {

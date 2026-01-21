@@ -2,6 +2,7 @@
   const DEFAULT_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz5pPLqQs4yEwqGXgkNF33J0FtdXUurTeMebjObAIuFf-_h0IUVkFy5UYiFAFss0nQ8/exec";
   const DEFAULT_TIMEOUT_MS = 15000;
   const RETRY_DELAY_MS = 700;
+  const SIMPLE_POST_CONTENT_TYPE = "text/plain;charset=utf-8";
   const CACHE_VERSION = 3;
   const CACHE_KEYS = {
     CATALOG: "orderportal_catalog_v3",
@@ -208,12 +209,13 @@
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const fetchOptions = {
       method,
+      mode: "cors",
       signal: controller.signal,
       headers: {},
     };
 
     if (method !== "GET") {
-      fetchOptions.headers["Content-Type"] = "application/json";
+      fetchOptions.headers["Content-Type"] = SIMPLE_POST_CONTENT_TYPE;
       fetchOptions.body = JSON.stringify({
         ...(body || {}),
         correlation_id: correlationId,
@@ -266,7 +268,8 @@
         if (err && err.name === "TypeError") err.isNetworkError = true;
         if (attempt < retry && (err.name === "AbortError" || err.status >= 500 || err.isNetworkError)) {
           warn("Retrying request", { attempt, error: err });
-          await sleep(RETRY_DELAY_MS * (attempt + 1));
+          const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
+          await sleep(delay);
           return attemptFetch(attempt + 1);
         }
         throw err;
