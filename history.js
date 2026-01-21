@@ -17,6 +17,7 @@ const state = {
   orders: [],
   items: [],
   catalog: null,
+  ordersUpdatedAt: "",
 };
 
 function setText(el, txt) {
@@ -94,11 +95,13 @@ function sortItems(items) {
 }
 
 function applyOrdersPayload(payload) {
+  const previousUpdatedAt = state.ordersUpdatedAt;
   state.catalog = AppClient.loadCatalog?.() || null;
   state.orders = Array.isArray(payload.orders) ? payload.orders : [];
   const items = Array.isArray(payload.items) ? payload.items : [];
   state.items = AppClient.enrichItemsWithCatalog(items, state.catalog);
   const updatedAt = payload.updatedAt || payload.updated_at || "";
+  state.ordersUpdatedAt = updatedAt || previousUpdatedAt || "";
   if (updatedAt) {
     setText(ui.updated, `Orders: ${new Date(updatedAt).toLocaleString()}`);
   }
@@ -210,8 +213,14 @@ async function refreshHistory(button) {
 
   try {
     const payload = await AppClient.refreshOrders({ force: true });
+    const responseUpdatedAt = payload.updatedAt || payload.updated_at || "";
+    const previousUpdatedAt = state.ordersUpdatedAt;
     applyOrdersPayload(payload);
-    setText(ui.status, "History: updated");
+    if (responseUpdatedAt && previousUpdatedAt && responseUpdatedAt === previousUpdatedAt) {
+      setText(ui.status, "History: Fully Updated");
+    } else {
+      setText(ui.status, "History: updated");
+    }
     AppClient.showToast(`Loaded ${state.orders.length} orders.`, "success");
   } catch (err) {
     const message = err.userMessage || err.message || String(err);
