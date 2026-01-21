@@ -23,8 +23,33 @@
     if (window.DEBUG) console.warn("[OrderPortal]", ...args);
   }
 
+  function normalizeBaseUrl(rawUrl) {
+    const trimmed = String(rawUrl || "").trim();
+    if (!trimmed) return DEFAULT_APPS_SCRIPT_URL;
+    try {
+      const url = new URL(trimmed);
+      url.hash = "";
+      let pathname = url.pathname.replace(/\/+$/, "");
+      if (pathname.endsWith("/dev")) {
+        pathname = pathname.replace(/\/dev$/, "/exec");
+      }
+      if (!pathname.endsWith("/exec")) {
+        pathname = `${pathname}/exec`;
+      }
+      url.pathname = pathname;
+      url.search = "";
+      return url.toString();
+    } catch (err) {
+      warn("Invalid Apps Script URL. Falling back to default.", {
+        input: trimmed,
+        error: err?.message || err,
+      });
+      return DEFAULT_APPS_SCRIPT_URL;
+    }
+  }
+
   function getBaseUrl() {
-    return window.APPS_SCRIPT_URL || DEFAULT_APPS_SCRIPT_URL;
+    return normalizeBaseUrl(window.APPS_SCRIPT_URL || DEFAULT_APPS_SCRIPT_URL);
   }
 
   function createCorrelationId() {
@@ -196,7 +221,8 @@
     } = options;
 
     const correlationId = createCorrelationId();
-    const url = new URL(getBaseUrl());
+    const baseUrl = getBaseUrl();
+    const url = new URL(baseUrl);
     url.searchParams.set("action", action);
     url.searchParams.set("cid", correlationId);
     if (cacheBust) url.searchParams.set("t", String(Date.now()));
@@ -210,6 +236,7 @@
     const fetchOptions = {
       method,
       mode: "cors",
+      credentials: "omit",
       signal: controller.signal,
       headers: {},
     };
@@ -222,12 +249,24 @@
       });
     }
 
+    const requestSummary = {
+      url: url.toString(),
+      options: {
+        method,
+        mode: fetchOptions.mode,
+        credentials: fetchOptions.credentials,
+        headers: Object.keys(fetchOptions.headers || {}),
+      },
+    };
+
     const attemptFetch = async (attempt) => {
+      let res;
+      let text = "";
       try {
-        log("Request", { method, url: url.toString() });
-        const res = await fetch(url.toString(), fetchOptions);
+        log("Request", requestSummary);
+        res = await fetch(url.toString(), fetchOptions);
         const contentType = res.headers.get("content-type") || "";
-        const text = await res.text();
+        text = await res.text();
 
         log("Response", {
           status: res.status,
@@ -240,12 +279,16 @@
           const err = new Error(message);
           err.userMessage = `${message} Check the web app deployment permissions and access settings.`;
           err.isHtml = true;
+          err.request = requestSummary;
+          err.response = { status: res.status, text };
           throw err;
         }
 
         if (!res.ok) {
           const err = new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
           err.status = res.status;
+          err.request = requestSummary;
+          err.response = { status: res.status, text };
           throw err;
         }
 
@@ -253,18 +296,27 @@
         if (!data) {
           const err = new Error("Failed to parse JSON response.");
           err.raw = text;
+          err.request = requestSummary;
+          err.response = { status: res.status, text };
           throw err;
         }
 
         if (data.ok === false) {
           const err = new Error(data.error || "Request failed.");
           err.payload = data;
+          err.request = requestSummary;
+          err.response = { status: res.status, text };
           throw err;
         }
 
         return data;
       } catch (err) {
         clearTimeout(timeout);
+        err.action = action;
+        err.request = err.request || requestSummary;
+        if (res) {
+          err.response = err.response || { status: res.status, text };
+        }
         if (err && err.name === "TypeError") err.isNetworkError = true;
         if (attempt < retry && (err.name === "AbortError" || err.status >= 500 || err.isNetworkError)) {
           warn("Retrying request", { attempt, error: err });
@@ -282,7 +334,14 @@
       return await attemptFetch(0);
     } catch (err) {
       const message = formatErrorMessage(err);
-      log("Request failed", message);
+      log("Request failed", {
+        message,
+        action,
+        request: err?.request,
+        responseStatus: err?.response?.status,
+        responseText: err?.response?.text,
+        isNetworkError: err?.isNetworkError || err?.name === "TypeError",
+      });
       throw err;
     }
   }
