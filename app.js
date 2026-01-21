@@ -185,6 +185,7 @@ const state = {
     compareSort: "qty-desc",
   },
   activeTab: "order",
+  submitting: false,
 };
 
 // =========================
@@ -1633,14 +1634,24 @@ function selectedItemsPayload() {
 }
 
 async function submitOrder() {
+  if (state.submitting) return;
+  state.submitting = true;
   showSubmitError("");
   showSubmitSuccess("");
 
   const metaErr = validateMeta();
-  if (metaErr) { showSubmitError(metaErr); return; }
+  if (metaErr) {
+    showSubmitError(metaErr);
+    state.submitting = false;
+    return;
+  }
 
   const items = selectedItemsPayload();
-  if (items.length === 0) { showSubmitError("No items selected."); return; }
+  if (items.length === 0) {
+    showSubmitError("No items selected.");
+    state.submitting = false;
+    return;
+  }
 
   const payload = {
     store: state.meta.store,
@@ -1675,7 +1686,7 @@ async function submitOrder() {
       method: "POST",
       body: payload,
       cacheBust: true,
-      retry: 2,
+      retry: 0,
       onRequest: ({ url, method }) => {
         console.info("[OrderPortal] Submit request", { method, url, payload: payloadSummary });
       },
@@ -1711,6 +1722,7 @@ async function submitOrder() {
     showGlobalError(`Order submission failed. ${hint}${requestIdSuffix}`, "warning");
     if (DEBUG) console.error(err);
   } finally {
+    state.submitting = false;
     ui.submitBtn.disabled = false;
     ui.submitBtn.textContent = "Submit Order";
   }
