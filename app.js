@@ -1193,15 +1193,26 @@ async function refreshReports({ force = false } = {}) {
   });
 
   try {
+    const previousUpdatedAt = state.ordersUpdatedAt;
     const ordersResp = await AppClient.refreshOrders({ force });
     const mergedOrders = attachItemsToOrders(ordersResp.orders || [], ordersResp.items || []);
     const orders = normalizeOrderRows(mergedOrders);
     state.orders = orders;
-    const iso = nowIso();
+    const responseUpdatedAt = ordersResp.updatedAt || ordersResp.updated_at || "";
+    const iso = responseUpdatedAt || nowIso();
     state.ordersUpdatedAt = iso;
     localStorage.setItem(CACHE.ORDERS, JSON.stringify(state.orders));
     localStorage.setItem(CACHE.ORDERS_UPDATED_AT, iso);
-    setReportStatus(`History: ${new Date(iso).toLocaleString()}`);
+    if (ordersResp.source === "cache") {
+      const cachedLabel = responseUpdatedAt
+        ? `History: cached (${new Date(responseUpdatedAt).toLocaleString()})`
+        : "History: cached";
+      setReportStatus(cachedLabel);
+    } else if (responseUpdatedAt && previousUpdatedAt && responseUpdatedAt === previousUpdatedAt) {
+      setReportStatus("History: Fully Updated");
+    } else {
+      setReportStatus(`History: ${new Date(iso).toLocaleString()}`);
+    }
     updateReportOptions();
     renderReports();
     AppClient.showToast(`Loaded ${orders.length} orders from history.`, "success");
