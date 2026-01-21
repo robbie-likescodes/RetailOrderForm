@@ -12,7 +12,7 @@
 const CONFIG = {
   spreadsheetId: "",
   apiVersion: "2026-01-21",
-  officeEmail: "",
+  officeEmail: "robbie@brewersak.com",
   auth: {
     requireToken: false,
     // Token auth intentionally disabled for "anyone with link" mode.
