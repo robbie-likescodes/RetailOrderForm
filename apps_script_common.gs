@@ -3,11 +3,17 @@ const CONFIG = {
   // Leave blank to use the container-bound spreadsheet.
   spreadsheetId: "",
   apiVersion: "2026-01-21",
+  officeEmail: "",
+  auth: {
+    requireToken: false,
+    sharedToken: "",
+  },
   sheets: {
     categories: "Categories",
     products: "Products",
     orders: "Orders",
     orderItems: "OrderItems",
+    orderErrors: "OrderErrors",
   },
 };
 

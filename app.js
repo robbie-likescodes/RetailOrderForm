@@ -78,6 +78,7 @@ const ui = {
   homeReports: $("homeReports"),
   topbarHomeBtn: $("topbarHomeBtn"),
   lastUpdated: $("lastUpdated"),
+  apiHealth: $("apiHealth"),
   refreshBtn: $("refreshBtn"),
   orderTabBtn: $("orderTabBtn"),
   reportsTabBtn: $("reportsTabBtn"),
@@ -315,6 +316,11 @@ function showSubmitError(msg) {
 function showSubmitSuccess(msg) {
   setHidden(ui.submitSuccess, !msg);
   setText(ui.submitSuccess, msg || "");
+}
+
+function setApiHealth(message) {
+  if (!ui.apiHealth) return;
+  ui.apiHealth.textContent = message;
 }
 
 function showHome() {
@@ -1017,6 +1023,23 @@ async function refreshCatalog({ force = false, background = false } = {}) {
   } finally {
     updateRefreshButtonLabel();
     setTopbarRefreshState({ isLoading: false });
+    refreshApiHealth({ background: true });
+  }
+}
+
+async function refreshApiHealth({ background = false } = {}) {
+  if (!ui.apiHealth) return;
+  if (!background) {
+    setApiHealth("API: checking…");
+  }
+  try {
+    const data = await AppClient.apiFetch("health", { cacheBust: true, retry: 1 });
+    const updatedAt = data.updated_at ? new Date(data.updated_at).toLocaleString() : "OK";
+    setApiHealth(`API Health: OK (${updatedAt})`);
+  } catch (err) {
+    const message = err.userMessage || err.message || "Unavailable";
+    const hint = err.isNetworkError ? "Network/CORS/deployment" : message;
+    setApiHealth(`API Health: Error (${hint})`);
   }
 }
 
@@ -1607,6 +1630,7 @@ async function submitOrder() {
       method: "POST",
       body: payload,
       cacheBust: true,
+      retry: 2,
     });
 
     const orderId = data.order_id || "(no id)";
@@ -1621,11 +1645,12 @@ async function submitOrder() {
 
   } catch (err) {
     const message = err.userMessage || err.message || String(err);
-    showSubmitError(
-      "Submit failed. This is expected until your Apps Script has doPost() to accept orders. " +
-      `Details: ${message}`
-    );
-    showGlobalError(`Order submission failed. ${message}`, "warning");
+    const requestId = err.payload?.request_id ? ` (Request ID: ${err.payload.request_id})` : "";
+    const hint = err.isNetworkError
+      ? "Network/CORS/deployment issue likely. Verify the Apps Script web app /exec URL and that it is deployed for 'Anyone' access."
+      : message;
+    showSubmitError(`Submit failed. ${hint}${requestId}`);
+    showGlobalError(`Order submission failed. ${hint}${requestId}`, "warning");
     if (DEBUG) console.error(err);
   } finally {
     ui.submitBtn.disabled = false;
@@ -1765,6 +1790,7 @@ function init() {
     setActiveTab("reports");
   }
   updateRefreshButtonLabel();
+  refreshApiHealth({ background: true });
 
   // If cache is stale or empty, try a background refresh
   const hasCatalog = state.products.length > 0;
