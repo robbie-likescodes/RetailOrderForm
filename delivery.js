@@ -1,12 +1,18 @@
-const CACHE = {
-  ORDERS: "orderportal_orders_v1",
-};
-
 const ui = {
   deliveryDate: document.getElementById("deliveryDate"),
   deliveryOrders: document.getElementById("deliveryOrders"),
   refreshBtn: document.getElementById("deliveryRefreshBtn"),
 };
+
+const DELIVERY_STATE_KEY = "orderportal_delivery_state_v1";
+
+let orders = [];
+let deliveryState = {};
+
+function setText(el, txt) {
+  if (!el) return;
+  el.textContent = txt;
+}
 
 function todayDateValue() {
   const today = new Date();
@@ -15,38 +21,60 @@ function todayDateValue() {
   return `${today.getFullYear()}-${month}-${day}`;
 }
 
-function safeJsonParse(s, fallback) {
-  try { return JSON.parse(s); } catch { return fallback; }
-}
-
 function escapeHtml(s) {
   return String(s)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
-    .replaceAll(`"`, "&quot;")
+    .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
 
-let orders = [];
-
-function loadOrders() {
-  const stored = safeJsonParse(localStorage.getItem(CACHE.ORDERS) || "[]", []);
-  orders = Array.isArray(stored) ? stored : [];
+function loadDeliveryState() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(DELIVERY_STATE_KEY) || "{}");
+    deliveryState = raw && typeof raw === "object" ? raw : {};
+  } catch (err) {
+    deliveryState = {};
+  }
 }
 
-function saveOrders() {
-  localStorage.setItem(CACHE.ORDERS, JSON.stringify(orders));
+function saveDeliveryState() {
+  localStorage.setItem(DELIVERY_STATE_KEY, JSON.stringify(deliveryState));
+}
+
+function attachItemsToOrders(ordersList, itemsList) {
+  if (!Array.isArray(ordersList)) return [];
+  const itemsByOrder = new Map();
+  (itemsList || []).forEach((item) => {
+    const orderId = String(item.order_id || "").trim();
+    if (!orderId) return;
+    if (!itemsByOrder.has(orderId)) itemsByOrder.set(orderId, []);
+    itemsByOrder.get(orderId).push(item);
+  });
+
+  return ordersList.map((order) => {
+    const orderId = String(order.order_id || order.id || "").trim();
+    const items = order.items || itemsByOrder.get(orderId) || [];
+    const enrichedItems = AppClient.enrichItemsWithCatalog(items, AppClient.loadCatalog?.());
+    return { ...order, items: enrichedItems };
+  });
 }
 
 function normalizeOrder(order) {
+  const existingDelivery = deliveryState[order.id] || deliveryState[order.order_id] || {};
   return {
     ...order,
+    id: order.id || order.order_id || orderIdFallback(order),
     delivery: {
-      status: order?.delivery?.status || "pending",
-      items: order?.delivery?.items || {},
+      status: existingDelivery.status || order?.delivery?.status || "pending",
+      items: existingDelivery.items || order?.delivery?.items || {},
     },
   };
+}
+
+function orderIdFallback(order) {
+  return String(order.order_id || order.id || `row_${Math.random().toString(36).slice(2)}`);
 }
 
 function itemKey(item) {
@@ -58,30 +86,28 @@ function getItemStatus(order, key) {
 }
 
 function setItemStatus(orderId, key, status) {
-  orders = orders.map((order) => {
-    if (order.id !== orderId) return order;
-    const updated = normalizeOrder(order);
-    if (!status) {
-      delete updated.delivery.items[key];
-    } else {
-      updated.delivery.items[key] = status;
-    }
-    if (!isOrderComplete(updated)) {
-      updated.delivery.status = "pending";
-    }
-    return updated;
-  });
-  saveOrders();
+  const next = deliveryState[orderId] || { status: "pending", items: {} };
+  if (!status) {
+    delete next.items[key];
+  } else {
+    next.items[key] = status;
+  }
+  if (!isOrderCompleteByMap(next.items)) {
+    next.status = "pending";
+  }
+  deliveryState[orderId] = next;
+  saveDeliveryState();
 }
 
 function markReady(orderId) {
-  orders = orders.map((order) => {
-    if (order.id !== orderId) return order;
-    const updated = normalizeOrder(order);
-    updated.delivery.status = "ready";
-    return updated;
-  });
-  saveOrders();
+  const next = deliveryState[orderId] || { status: "pending", items: {} };
+  next.status = "ready";
+  deliveryState[orderId] = next;
+  saveDeliveryState();
+}
+
+function isOrderCompleteByMap(itemsMap) {
+  return Object.values(itemsMap || {}).every((status) => status === "pulled" || status === "unavailable");
 }
 
 function isOrderComplete(order) {
@@ -102,7 +128,7 @@ function renderOrders() {
   if (!ui.deliveryOrders) return;
   const today = todayDateValue();
   const openIds = new Set(
-    Array.from(ui.deliveryOrders.querySelectorAll("details[open]"))
+    Array.from(ui.deliveryOrders.querySelectorAll("details[open]")
       .map((el) => el.getAttribute("data-order-id"))
   );
 
@@ -111,16 +137,6 @@ function renderOrders() {
   const normalizedOrders = orders
     .map(normalizeOrder)
     .map(syncOrderStatus);
-
-  const statusChanged = normalizedOrders.some((order, index) => {
-    const prev = orders[index];
-    return prev?.delivery?.status !== order.delivery.status;
-  });
-
-  if (statusChanged) {
-    orders = normalizedOrders;
-    saveOrders();
-  }
 
   const todaysOrders = normalizedOrders
     .filter((order) => order.requested_date === today);
@@ -221,55 +237,71 @@ function renderOrders() {
       itemList.appendChild(row);
     });
 
-    details.appendChild(itemList);
-
     const footer = document.createElement("div");
     footer.className = "deliveryFooter";
 
-    if (order.delivery.status === "ready") {
-      const readyBadge = document.createElement("div");
-      readyBadge.className = "statusBadge";
-      readyBadge.textContent = "✓ Marked ready for delivery";
-      footer.appendChild(readyBadge);
-    } else if (isOrderComplete(order)) {
-      const readyBtn = document.createElement("button");
-      readyBtn.type = "button";
-      readyBtn.className = "btn btn--primary";
-      readyBtn.textContent = "Mark as Ready for Delivery";
-      readyBtn.addEventListener("click", () => {
-        markReady(order.id);
-        renderOrders();
-      });
-      footer.appendChild(readyBtn);
-    } else {
-      const hint = document.createElement("div");
-      hint.className = "hint";
-      hint.textContent = "Mark all items pulled or unavailable to enable delivery.";
-      footer.appendChild(hint);
-    }
+    const readyBtn = document.createElement("button");
+    readyBtn.className = "btn btn--primary";
+    readyBtn.textContent = "Mark Ready";
+    readyBtn.disabled = !isOrderComplete(order);
+    readyBtn.addEventListener("click", () => {
+      markReady(order.id);
+      renderOrders();
+    });
 
+    footer.appendChild(readyBtn);
+    details.appendChild(itemList);
     details.appendChild(footer);
     ui.deliveryOrders.appendChild(details);
   });
 }
 
-function init() {
-  if (ui.deliveryDate) {
-    ui.deliveryDate.textContent = `Orders for ${todayDateValue()}`;
-  }
-  loadOrders();
+function applyOrdersPayload(payload) {
+  const merged = attachItemsToOrders(payload.orders || [], payload.items || []);
+  orders = merged.map((order) => ({
+    ...order,
+    id: String(order.order_id || order.id || ""),
+  }));
   renderOrders();
-  ui.refreshBtn?.addEventListener("click", () => {
-    loadOrders();
-    renderOrders();
-  });
+}
 
-  window.addEventListener("storage", (event) => {
-    if (event.key === CACHE.ORDERS) {
-      loadOrders();
-      renderOrders();
+async function refreshOrders(button) {
+  AppClient.setRefreshState(button || ui.refreshBtn, true, "Refreshing…");
+  try {
+    const payload = await AppClient.refreshOrders({ force: true });
+    applyOrdersPayload(payload);
+    AppClient.showToast(`Loaded ${orders.length} orders.`, "success");
+  } catch (err) {
+    const message = err.userMessage || err.message || String(err);
+    AppClient.showBanner(`Unable to refresh orders. ${message}`, "warning");
+    AppClient.showToast("Order refresh failed.", "error");
+  } finally {
+    AppClient.setRefreshState(button || ui.refreshBtn, false);
+  }
+}
+
+function loadFromCache() {
+  const cachedOrders = AppClient.loadOrders?.();
+  if (cachedOrders) {
+    applyOrdersPayload(cachedOrders);
+  }
+}
+
+function init() {
+  loadDeliveryState();
+  loadFromCache();
+  setText(ui.deliveryDate, `Today: ${todayDateValue()}`);
+  AppClient.bindRefreshButtons({
+    orders: (button) => refreshOrders(button),
+  });
+  AppClient.watchNetworkStatus((online) => {
+    if (!online) {
+      AppClient.showBanner("You are offline. Showing cached delivery orders.", "warning");
+    } else {
+      AppClient.hideBanner();
     }
   });
+  refreshOrders(ui.refreshBtn);
 }
 
 init();

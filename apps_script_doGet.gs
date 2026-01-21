@@ -1,59 +1,61 @@
 function doGet(e) {
   const requestId = Utilities.getUuid();
   try {
-    const action = String((e && e.parameter && e.parameter.action) || "").trim();
+    const action = getAction_(e).toLowerCase();
+    Logger.log("doGet request %s action=%s cid=%s", requestId, action, getCorrelationId_(e));
     if (!action) {
       return jsonResponse(buildError_(
         "Missing action.",
         "MISSING_ACTION",
-        { expected: ["categories", "products", "order_history"] },
+        { expected: ["categories", "products", "listOrders", "health"] },
         requestId
       ));
     }
 
     if (action === "categories") {
       const rows = getSheetRows_(CONFIG.sheets.categories)
-        .filter(row => row.category && isRowActive_(row))
+        .filter(row => getFirstValue_(row, ["category", "category_name", "department", "dept"]) && isRowActive_(row))
         .map(row => ({
-          category: String(row.category || "").trim(),
-          display_name: String(row.display_name || row.category || "").trim(),
-          sort: Number(row.sort || 9999),
+          category: String(getFirstValue_(row, ["category", "category_name", "department", "dept"]) || "").trim(),
+          display_name: String(getFirstValue_(row, ["display_name", "display", "name", "category", "category_name"]) || "").trim(),
+          sort: Number(getFirstValue_(row, ["sort", "order", "display_order"]) || 9999),
         }))
         .sort((a, b) => a.sort - b.sort);
 
-      return jsonResponse({
-        ok: true,
+      return jsonResponse(buildSuccess_({
         action,
         request_id: requestId,
         categories: rows,
-        updated_at: new Date().toISOString(),
-      });
+      }, requestId));
     }
 
     if (action === "products") {
       const rows = getSheetRows_(CONFIG.sheets.products)
-        .filter(row => row.sku && row.name && row.category && isRowActive_(row))
+        .filter(row => {
+          const sku = getFirstValue_(row, ["sku", "product_sku", "item_sku", "id", "product_id"]);
+          const name = getFirstValue_(row, ["name", "product_name", "item_name", "description"]);
+          const category = getFirstValue_(row, ["category", "category_name", "department", "dept"]);
+          return sku && name && category && isRowActive_(row);
+        })
         .map(row => ({
-          item_no: String(row.item_no || "").trim(),
-          sku: String(row.sku || "").trim(),
-          name: String(row.name || "").trim(),
-          category: String(row.category || "").trim(),
-          unit: String(row.unit || "").trim(),
-          pack_size: String(row.pack_size || "").trim(),
-          sort: Number(row.sort || 9999),
+          item_no: String(getFirstValue_(row, ["item_no", "item_number", "item"]) || "").trim(),
+          sku: String(getFirstValue_(row, ["sku", "product_sku", "item_sku", "id", "product_id"]) || "").trim(),
+          name: String(getFirstValue_(row, ["name", "product_name", "item_name", "description"]) || "").trim(),
+          category: String(getFirstValue_(row, ["category", "category_name", "department", "dept"]) || "").trim(),
+          unit: String(getFirstValue_(row, ["unit", "uom"]) || "").trim(),
+          pack_size: String(getFirstValue_(row, ["pack_size", "pack", "case_size", "case_pack"]) || "").trim(),
+          sort: Number(getFirstValue_(row, ["sort", "order", "display_order"]) || 9999),
         }))
         .sort((a, b) => a.sort - b.sort);
 
-      return jsonResponse({
-        ok: true,
+      return jsonResponse(buildSuccess_({
         action,
         request_id: requestId,
         products: rows,
-        updated_at: new Date().toISOString(),
-      });
+      }, requestId));
     }
 
-    if (action === "order_history") {
+    if (action === "order_history" || action === "listorders") {
       const getTime = (value) => {
         if (value instanceof Date) return value.getTime();
         const parsed = Date.parse(value);
@@ -97,23 +99,36 @@ function doGet(e) {
           return String(a.name || a.sku || "").localeCompare(String(b.name || b.sku || ""));
         });
 
-      return jsonResponse({
-        ok: true,
-        action,
+      return jsonResponse(buildSuccess_({
+        action: "listOrders",
         request_id: requestId,
         orders,
         items,
-        updated_at: new Date().toISOString(),
-      });
+      }, requestId));
+    }
+
+    if (action === "health") {
+      const categories = getSheetRows_(CONFIG.sheets.categories);
+      const products = getSheetRows_(CONFIG.sheets.products);
+      return jsonResponse(buildSuccess_({
+        action,
+        request_id: requestId,
+        sheet_id: CONFIG.spreadsheetId || SpreadsheetApp.getActiveSpreadsheet().getId(),
+        counts: {
+          categories: categories.length,
+          products: products.length,
+        },
+      }, requestId));
     }
 
     return jsonResponse(buildError_(
       `Unknown action: ${action}`,
       "UNKNOWN_ACTION",
-      { received: action, expected: ["categories", "products", "order_history"] },
+      { received: action, expected: ["categories", "products", "listOrders", "health"] },
       requestId
     ));
   } catch (err) {
+    Logger.log("doGet error %s: %s", requestId, err);
     return jsonResponse(buildError_(
       String(err),
       "UNHANDLED_ERROR",

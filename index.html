@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <div id="globalBanner" class="banner" hidden></div>
   <section id="homeScreen" class="home">
     <div class="home__card">
       <h1 class="home__title">RETAIL ORDERS</h1>
@@ -33,7 +34,7 @@
               <path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"></path>
             </svg>
           </button>
-          <button class="btn btn--ghost" id="refreshBtn" type="button" aria-label="Refresh products from Google Sheets" title="Refresh products from Google Sheets">Refresh Products</button>
+          <button class="btn btn--ghost" id="refreshBtn" data-refresh="catalog" type="button" aria-label="Refresh products from Google Sheets" title="Refresh products from Google Sheets">Refresh Products</button>
         </div>
       </div>
 
@@ -226,6 +227,9 @@
     </section>
   </main>
 
+  <div id="toastContainer" class="toastContainer"></div>
+
+  <script src="shared.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

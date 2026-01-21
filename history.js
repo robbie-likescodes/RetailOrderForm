@@ -4,11 +4,6 @@
  * Fetches orders + items from Apps Script and renders a store/order drill-down.
  */
 
-const CONFIG = {
-  SCRIPT_URL: "https://script.google.com/macros/s/AKfycbzgkI0hGD6aIdLuUYM8T_MD6XJyfzYBQmdoLW7z8yB2R6Sjh4BI5LHgyg_ybvVisY6K/exec",
-  GET_ORDER_HISTORY: (t) => `${CONFIG.SCRIPT_URL}?action=order_history&t=${t}`,
-};
-
 const $ = (id) => document.getElementById(id);
 const ui = {
   updated: $("historyUpdated"),
@@ -21,6 +16,7 @@ const ui = {
 const state = {
   orders: [],
   items: [],
+  catalog: null,
 };
 
 function setText(el, txt) {
@@ -55,28 +51,6 @@ function parseDate(value) {
 function formatDate(value) {
   const date = parseDate(value);
   return date ? date.toLocaleString() : "Unknown time";
-}
-
-async function fetchJson(url, { timeoutMs = 15000 } = {}) {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const res = await fetch(url, { signal: controller.signal });
-    const text = await res.text();
-    let data = null;
-    try { data = JSON.parse(text); } catch { /* not json */ }
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
-    if (!data) {
-      throw new Error(
-        `Expected JSON but received ${res.headers.get("content-type") || "unknown content-type"}. ` +
-        `Response: ${text.slice(0, 200)}`
-      );
-    }
-    return data;
-  } finally {
-    clearTimeout(t);
-  }
 }
 
 function groupItemsByOrder(items) {
@@ -117,6 +91,18 @@ function sortItems(items) {
       sensitivity: "base",
     });
   });
+}
+
+function applyOrdersPayload(payload) {
+  state.catalog = AppClient.loadCatalog?.() || null;
+  state.orders = Array.isArray(payload.orders) ? payload.orders : [];
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  state.items = AppClient.enrichItemsWithCatalog(items, state.catalog);
+  const updatedAt = payload.updatedAt || payload.updated_at || "";
+  if (updatedAt) {
+    setText(ui.updated, `Orders: ${new Date(updatedAt).toLocaleString()}`);
+  }
+  renderHistory();
 }
 
 function renderHistory() {
@@ -217,45 +203,47 @@ function renderHistory() {
   });
 }
 
-async function refreshHistory() {
+async function refreshHistory(button) {
   showError("");
-  setHidden(ui.status, false);
-  setText(ui.status, "Refreshing orders from Google Sheets…");
-
-  if (!CONFIG.SCRIPT_URL || CONFIG.SCRIPT_URL.includes("PASTE_")) {
-    showError("Please set CONFIG.SCRIPT_URL in history.js to your Apps Script Web App /exec URL.");
-    setHidden(ui.status, true);
-    return;
-  }
-
-  ui.refreshBtn.disabled = true;
-  ui.refreshBtn.textContent = "Refreshing…";
+  AppClient.hideBanner?.();
+  AppClient.setRefreshState(button || ui.refreshBtn, true, "Refreshing…");
 
   try {
-    const t = Date.now();
-    const data = await fetchJson(CONFIG.GET_ORDER_HISTORY(t));
-    if (!data.ok) throw new Error(data.error || "Order history endpoint failed");
-
-    state.orders = Array.isArray(data.orders) ? data.orders : [];
-    state.items = Array.isArray(data.items) ? data.items : [];
-
-    renderHistory();
-
-    const updatedAt = data.updated_at ? new Date(data.updated_at) : new Date();
-    setText(ui.updated, `Orders: ${updatedAt.toLocaleString()}`);
-    setHidden(ui.status, true);
+    const payload = await AppClient.refreshOrders({ force: true });
+    applyOrdersPayload(payload);
+    setText(ui.status, "History: updated");
+    AppClient.showToast(`Loaded ${state.orders.length} orders.`, "success");
   } catch (err) {
-    showError(`Could not refresh order history. (${String(err)})`);
-    setHidden(ui.status, true);
+    const message = err.userMessage || err.message || String(err);
+    showError(message);
+    AppClient.showBanner(`History refresh failed. ${message}`, "warning");
+    AppClient.showToast("History refresh failed.", "error");
   } finally {
-    ui.refreshBtn.disabled = false;
-    ui.refreshBtn.textContent = "Refresh Orders";
+    AppClient.setRefreshState(button || ui.refreshBtn, false);
+  }
+}
+
+function loadFromCache() {
+  const cachedOrders = AppClient.loadOrders?.();
+  if (cachedOrders) {
+    applyOrdersPayload(cachedOrders);
+    setText(ui.status, "History: loaded from cache.");
   }
 }
 
 function init() {
-  ui.refreshBtn?.addEventListener("click", refreshHistory);
-  refreshHistory();
+  loadFromCache();
+  AppClient.bindRefreshButtons({
+    orders: (button) => refreshHistory(button),
+  });
+  AppClient.watchNetworkStatus((online) => {
+    if (!online) {
+      AppClient.showBanner("You are offline. Showing cached history.", "warning");
+    } else {
+      AppClient.hideBanner();
+    }
+  });
+  refreshHistory(ui.refreshBtn);
 }
 
 init();

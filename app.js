@@ -25,17 +25,6 @@
 // CONFIG
 // =========================
 const CONFIG = {
-  // Put your web app URL here (ends with /exec)
-  SCRIPT_URL: "https://script.google.com/macros/s/AKfycbz5pPLqQs4yEwqGXgkNF33J0FtdXUurTeMebjObAIuFf-_h0IUVkFy5UYiFAFss0nQ8/exec",
-
-  // Endpoints
-  GET_CATEGORIES: (t) => `${CONFIG.SCRIPT_URL}?action=categories&t=${t}`,
-  GET_PRODUCTS: (t) => `${CONFIG.SCRIPT_URL}?action=products&t=${t}`,
-
-  // POST URL is the same /exec (Apps Script doPost)
-  POST_ORDER: () => `${CONFIG.SCRIPT_URL}`,
-  GET_ORDERS: (t) => `${CONFIG.SCRIPT_URL}?action=order_history&t=${t}`,
-
   // Behavior
   CACHE_TTL_MS: 1000 * 60 * 60 * 12, // 12 hours (soft)
   CONFIRM_REFRESH_IF_DIRTY: true,
@@ -59,7 +48,7 @@ const urlParams = new URLSearchParams(window.location.search);
 const TOKEN = urlParams.get("token") || "";                 // optional shared key / store token
 const STORE_LOCK = urlParams.get("store") || "";            // optional store prefill/lock
 const VIEW = (urlParams.get("view") || "").toLowerCase();
-const DEBUG = (urlParams.get("debug") || "").toLowerCase() === "true";
+const DEBUG = window.DEBUG === true;
 
 // =========================
 // CACHE KEYS
@@ -298,6 +287,14 @@ function showError(msg) {
   setText(ui.errorBox, msg || "");
 }
 
+function showGlobalError(message, type = "error") {
+  if (message) {
+    AppClient.showBanner(message, type);
+  } else {
+    AppClient.hideBanner();
+  }
+}
+
 function showSubmitError(msg) {
   setHidden(ui.submitError, !msg);
   setText(ui.submitError, msg || "");
@@ -382,6 +379,14 @@ function isWithinRange(date, start, end) {
 // CACHE: LOAD/SAVE
 // =========================
 function loadCache() {
+  const catalogCache = AppClient.loadCatalog?.();
+  if (catalogCache) {
+    if (Array.isArray(catalogCache.categories)) state.categories = catalogCache.categories;
+    if (Array.isArray(catalogCache.products)) state.products = catalogCache.products;
+    state.lastCatalogIso = catalogCache.updatedAt || "";
+    state.lastCacheIso = catalogCache.cachedAt || "";
+  }
+
   const cats = safeJsonParse(localStorage.getItem(CACHE.CATEGORIES) || "[]", []);
   const prods = safeJsonParse(localStorage.getItem(CACHE.PRODUCTS) || "[]", []);
   const qtys = safeJsonParse(localStorage.getItem(CACHE.QUANTITIES) || "{}", {});
@@ -408,15 +413,17 @@ function loadCache() {
 
   if (pos && typeof pos.idx === "number") state.idx = Math.max(0, pos.idx | 0);
 
-  state.lastCatalogIso = updatedAt;
-  state.lastCacheIso = cachedAt;
+  if (!state.lastCatalogIso) state.lastCatalogIso = updatedAt;
+  if (!state.lastCacheIso) state.lastCacheIso = cachedAt;
 
-  if (updatedAt) {
-    setText(ui.lastUpdated, `Catalog: ${new Date(updatedAt).toLocaleString()}`);
-  } else if (cachedAt) {
-    setText(ui.lastUpdated, `Catalog: cached ${new Date(cachedAt).toLocaleString()}`);
+  const catalogTimestamp = state.lastCatalogIso || updatedAt;
+  const cacheTimestamp = state.lastCacheIso || cachedAt;
+  if (catalogTimestamp) {
+    setText(ui.lastUpdated, `Catalog: ${new Date(catalogTimestamp).toLocaleString()}`);
+  } else if (cacheTimestamp) {
+    setText(ui.lastUpdated, `Catalog: cached ${new Date(cacheTimestamp).toLocaleString()}`);
   } else {
-    setText(ui.lastUpdated, `Catalog: not loaded`);
+    setText(ui.lastUpdated, "Catalog: not loaded");
   }
 
   // Apply store lock if present
@@ -427,6 +434,13 @@ function loadCache() {
 }
 
 function loadOrders() {
+  const cachedOrders = AppClient.loadOrders?.();
+  if (cachedOrders && Array.isArray(cachedOrders.orders)) {
+    const mergedOrders = attachItemsToOrders(cachedOrders.orders, cachedOrders.items || []);
+    state.orders = normalizeOrderRows(mergedOrders);
+    state.ordersUpdatedAt = cachedOrders.updatedAt || "";
+    return;
+  }
   const orders = safeJsonParse(localStorage.getItem(CACHE.ORDERS) || "[]", []);
   state.orders = Array.isArray(orders) ? orders : [];
 }
@@ -915,39 +929,6 @@ function backToWizard() {
   }
 }
 
-// =========================
-// NETWORK / API
-// =========================
-async function fetchJson(url, { timeoutMs = 15000 } = {}) {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      mode: "cors",
-      cache: "no-store",
-      headers: {
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
-      },
-    });
-    const text = await res.text();
-    let data = null;
-    try { data = JSON.parse(text); } catch { /* not json */ }
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
-    if (!data) {
-      throw new Error(
-        `Expected JSON but received ${res.headers.get("content-type") || "unknown content-type"}. ` +
-        `Response: ${text.slice(0, 200)}`
-      );
-    }
-    return data;
-  } finally {
-    clearTimeout(t);
-  }
-}
-
 function isCacheStale() {
   const cachedAt = localStorage.getItem(CACHE.CACHED_AT);
   if (!cachedAt) return true;
@@ -955,17 +936,49 @@ function isCacheStale() {
   return age > CONFIG.CACHE_TTL_MS;
 }
 
-async function refreshCatalog({ force = false } = {}) {
-  showError("");
+function updateUIAfterRefresh(catalog) {
+  const cats = normalizeCategoryRows(catalog.categories || []);
+  const prods = normalizeProductRows(catalog.products || []);
 
-  if (CONFIG.CONFIRM_REFRESH_IF_DIRTY && state.dirty && !force) {
-    const ok = confirm("Refreshing may reset your position. Continue?");
-    if (!ok) return;
+  if (!prods.length) {
+    throw new Error("No products returned from Google Sheets. Verify your Products sheet has active rows.");
   }
 
-  if (!CONFIG.SCRIPT_URL || CONFIG.SCRIPT_URL.includes("PASTE_")) {
-    showError("Please set CONFIG.SCRIPT_URL in app.js to your Apps Script Web App /exec URL.");
-    return;
+  const previousCategory = state.selectedCategory;
+  state.categories = cats;
+  state.products = prods;
+
+  buildSteps();
+  state.idx = Math.min(state.idx, Math.max(0, state.steps.length - 1));
+
+  const iso = catalog.updatedAt || nowIso();
+  state.lastCatalogIso = iso;
+  localStorage.setItem(CACHE.UPDATED_AT, iso);
+  localStorage.setItem(CACHE.CACHED_AT, iso);
+  setText(ui.lastUpdated, `Catalog: ${new Date(iso).toLocaleString()}`);
+
+  saveCache();
+  updateReportOptions();
+  if (previousCategory && state.categoryIndex.has(previousCategory)) {
+    state.selectedCategory = previousCategory;
+    showItems();
+  } else {
+    state.selectedCategory = "";
+    showCatalog();
+  }
+
+  renderWizard();
+  state.dirty = false;
+  return { cats, prods };
+}
+
+async function refreshCatalog({ force = false, background = false } = {}) {
+  showError("");
+  showGlobalError("");
+
+  if (CONFIG.CONFIRM_REFRESH_IF_DIRTY && state.dirty && !force && !background) {
+    const ok = confirm("Refreshing may reset your position. Continue?");
+    if (!ok) return;
   }
 
   setTopbarRefreshState({
@@ -975,55 +988,14 @@ async function refreshCatalog({ force = false } = {}) {
   });
 
   try {
-    const t = Date.now();
-    const [catsResult, prodsResult] = await Promise.allSettled([
-      fetchJson(CONFIG.GET_CATEGORIES(t)),
-      fetchJson(CONFIG.GET_PRODUCTS(t)),
-    ]);
-
-    const prodsResp = prodsResult.status === "fulfilled" ? prodsResult.value : null;
-    if (!prodsResp || !prodsResp.ok) {
-      const reason = prodsResp?.error || prodsResult.reason || "Products endpoint failed";
-      throw new Error(reason);
-    }
-
-    const catsResp = catsResult.status === "fulfilled" ? catsResult.value : null;
-    if (catsResp && !catsResp.ok) {
-      log("Categories endpoint failed", catsResp.error);
-      showError(`Products loaded, but categories failed. (${catsResp.error || "Categories endpoint failed"})`);
-    } else if (catsResult.status === "rejected") {
-      log("Categories endpoint failed", catsResult.reason);
-      showError(`Products loaded, but categories failed. (${String(catsResult.reason)})`);
-    }
-
-    const cats = normalizeCategoryRows(catsResp?.categories || []);
-    const prods = normalizeProductRows(prodsResp.products || []);
-
-    if (!prods.length) {
-      throw new Error("No products returned from Google Sheets. Verify your Products sheet has active rows.");
-    }
-
-    state.categories = cats;
-    state.products = prods;
-
-    // Reset idx if steps changed significantly
-    buildSteps();
-    state.idx = Math.min(state.idx, Math.max(0, state.steps.length - 1));
-
-    // Update timestamps
-    const iso = prodsResp.updated_at || catsResp?.updated_at || nowIso();
-    state.lastCatalogIso = iso;
-    localStorage.setItem(CACHE.UPDATED_AT, iso);
-    localStorage.setItem(CACHE.CACHED_AT, iso);
-    setText(ui.lastUpdated, `Catalog: ${new Date(iso).toLocaleString()}`);
-
-    saveCache();
-    updateReportOptions();
-    renderWizard();
-    state.dirty = false;
-
+    const catalog = await AppClient.refreshCategoriesAndProducts({ force });
+    const { cats, prods } = updateUIAfterRefresh(catalog);
+    AppClient.showToast(`Loaded ${cats.length} categories and ${prods.length} products.`, "success");
   } catch (err) {
-    showError(`Could not refresh. Using cached data if available. (${String(err)})`);
+    const message = `Could not refresh catalog. ${err.userMessage || err.message || err}`;
+    showError(message);
+    showGlobalError(message, "warning");
+    AppClient.showToast("Using cached data (if available).", "warning");
     buildSteps();
     if (state.selectedCategory) {
       showItems();
@@ -1037,10 +1009,16 @@ async function refreshCatalog({ force = false } = {}) {
 }
 
 function updateNetStatus() {
-  if (!ui.netStatus) return;
   const online = navigator.onLine;
-  ui.netStatus.textContent = online ? "Online" : "Offline";
-  ui.netStatus.style.opacity = online ? "0.7" : "1";
+  if (ui.netStatus) {
+    ui.netStatus.textContent = online ? "Online" : "Offline";
+    ui.netStatus.style.opacity = online ? "0.7" : "1";
+  }
+  if (!online) {
+    showGlobalError("You appear to be offline. Showing cached data until connection is restored.", "warning");
+  } else {
+    showGlobalError("");
+  }
 }
 
 // =========================
@@ -1094,11 +1072,6 @@ function updateRefreshButtonLabel() {
 }
 
 async function refreshReports({ force = false } = {}) {
-  if (!CONFIG.SCRIPT_URL || CONFIG.SCRIPT_URL.includes("PASTE_")) {
-    setReportStatus("History: unavailable (missing Apps Script URL).");
-    return;
-  }
-
   if (!navigator.onLine && !force) {
     setReportStatus("History: offline, using cached data.");
     return;
@@ -1115,9 +1088,7 @@ async function refreshReports({ force = false } = {}) {
   });
 
   try {
-    const t = Date.now();
-    const ordersResp = await fetchJson(CONFIG.GET_ORDERS(t));
-    if (!ordersResp.ok) throw new Error(ordersResp.error || "Orders endpoint failed");
+    const ordersResp = await AppClient.refreshOrders({ force });
     const mergedOrders = attachItemsToOrders(ordersResp.orders || [], ordersResp.items || []);
     const orders = normalizeOrderRows(mergedOrders);
     state.orders = orders;
@@ -1128,8 +1099,12 @@ async function refreshReports({ force = false } = {}) {
     setReportStatus(`History: ${new Date(iso).toLocaleString()}`);
     updateReportOptions();
     renderReports();
+    AppClient.showToast(`Loaded ${orders.length} orders from history.`, "success");
   } catch (err) {
-    setReportStatus(`History: using cached data. (${String(err)})`);
+    const message = `History: using cached data. (${err.userMessage || err.message || err})`;
+    setReportStatus(message);
+    showGlobalError(message, "warning");
+    AppClient.showToast("History refresh failed. Using cached data.", "warning");
   } finally {
     if (ui.refreshReportsBtn) {
       ui.refreshReportsBtn.disabled = false;
@@ -1615,27 +1590,15 @@ async function submitOrder() {
   ui.submitBtn.textContent = "Submitting...";
 
   try {
-    const res = await fetch(CONFIG.POST_ORDER(), {
+    const data = await AppClient.apiFetch("submitOrder", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: payload,
+      cacheBust: true,
     });
-
-    // Apps Script sometimes returns 302/HTML if not configured; handle gracefully
-    const text = await res.text();
-    let data = null;
-    try { data = JSON.parse(text); } catch { /* not json */ }
-
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
-    }
-    if (!data || data.ok !== true) {
-      // If doPost not implemented yet, you’ll likely end up here
-      throw new Error((data && data.error) ? data.error : `Unexpected response: ${text.slice(0, 200)}`);
-    }
 
     const orderId = data.order_id || "(no id)";
     showSubmitSuccess(`Order submitted successfully. Order ID: ${orderId}`);
+    AppClient.showToast("Order submitted successfully.", "success");
 
     // Reset quantities after success
     recordOrderHistory(payload, orderId);
@@ -1644,10 +1607,12 @@ async function submitOrder() {
     saveCache();
 
   } catch (err) {
+    const message = err.userMessage || err.message || String(err);
     showSubmitError(
       "Submit failed. This is expected until your Apps Script has doPost() to accept orders. " +
-      `Details: ${String(err)}`
+      `Details: ${message}`
     );
+    showGlobalError(`Order submission failed. ${message}`, "warning");
     if (DEBUG) console.error(err);
   } finally {
     ui.submitBtn.disabled = false;
@@ -1678,12 +1643,14 @@ function wireEvents() {
   });
 
   ui.topbarHomeBtn?.addEventListener("click", () => showHome());
-  ui.refreshBtn?.addEventListener("click", () => {
-    if (state.activeTab === "reports") {
-      refreshReports({ force: true });
-      return;
-    }
-    refreshCatalog({ force: true });
+  AppClient.bindRefreshButtons({
+    catalog: () => {
+      if (state.activeTab === "reports") {
+        refreshReports({ force: true });
+        return;
+      }
+      refreshCatalog({ force: true });
+    },
   });
   ui.orderTabBtn?.addEventListener("click", () => setActiveTab("order"));
   ui.reportsTabBtn?.addEventListener("click", () => setActiveTab("reports"));
@@ -1728,7 +1695,6 @@ function wireEvents() {
   ui.compareStart?.addEventListener("change", rerenderReports);
   ui.compareEnd?.addEventListener("change", rerenderReports);
   ui.compareSort?.addEventListener("change", rerenderReports);
-  ui.refreshReportsBtn?.addEventListener("click", () => refreshReports({ force: true }));
 
   // Optional: category jump toggle
   ui.categoryJumpBtn?.addEventListener("click", () => {
@@ -1789,7 +1755,9 @@ function init() {
 
   // If cache is stale or empty, try a background refresh
   const hasCatalog = state.products.length > 0;
-  if (!hasCatalog || isCacheStale()) {
+  if (hasCatalog) {
+    refreshCatalog({ force: true, background: true });
+  } else {
     refreshCatalog({ force: true });
   }
 }
