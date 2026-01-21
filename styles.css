@@ -93,6 +93,31 @@ body{
   box-shadow: 0 10px 18px rgba(15, 23, 42, 0.12);
 }
 
+.icon-button{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  border: 1px solid rgba(79, 70, 229, 0.2);
+  background: #ffffff;
+  color: var(--primary-strong);
+  font-size: 18px;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: var(--shadow-subtle);
+}
+
+.icon-button:hover{
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.12);
+}
+
+.icon-button:focus-visible{
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.25);
+}
+
 .topbar{
   padding: calc(var(--pad) * 1.2);
   background: linear-gradient(135deg, #ffffff 0%, #f1f5ff 100%);

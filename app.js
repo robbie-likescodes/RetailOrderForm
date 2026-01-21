@@ -87,12 +87,7 @@ const ui = {
   homeDrivers: $("homeDrivers"),
   homeHistory: $("homeHistory"),
   homeReports: $("homeReports"),
-  topMenuToggle: $("topMenuToggle"),
-  topMenuList: $("topMenuList"),
-  topMenuOrder: $("topMenuOrder"),
-  topMenuDrivers: $("topMenuDrivers"),
-  topMenuHistory: $("topMenuHistory"),
-  topMenuReports: $("topMenuReports"),
+  homeButton: $("homeButton"),
   lastUpdated: $("lastUpdated"),
   refreshBtn: $("refreshBtn"),
   orderTabBtn: $("orderTabBtn"),
@@ -284,16 +279,12 @@ function showSubmitSuccess(msg) {
 function showHome() {
   setHidden(ui.homeScreen, false);
   setHidden(ui.orderApp, true);
-  if (ui.topMenuToggle) ui.topMenuToggle.setAttribute("aria-expanded", "false");
-  setHidden(ui.topMenuList, true);
   window.scrollTo({ top: 0, behavior: "instant" });
 }
 
 function showOrderApp() {
   setHidden(ui.homeScreen, true);
   setHidden(ui.orderApp, false);
-  if (ui.topMenuToggle) ui.topMenuToggle.setAttribute("aria-expanded", "false");
-  setHidden(ui.topMenuList, true);
   window.scrollTo({ top: 0, behavior: "instant" });
 }
 
@@ -1398,13 +1389,6 @@ async function submitOrder() {
 // EVENTS
 // =========================
 function wireEvents() {
-  ui.topMenuToggle?.addEventListener("click", () => {
-    if (!ui.topMenuList) return;
-    const isHidden = ui.topMenuList.hidden;
-    setHidden(ui.topMenuList, !isHidden);
-    ui.topMenuToggle?.setAttribute("aria-expanded", String(isHidden));
-  });
-
   ui.homeOrder?.addEventListener("click", () => {
     setActiveTab("order");
     showOrderApp();
@@ -1423,26 +1407,7 @@ function wireEvents() {
     setActiveTab("reports");
   });
 
-  ui.topMenuOrder?.addEventListener("click", () => {
-    setActiveTab("order");
-    showOrderApp();
-    setHidden(ui.topMenuList, true);
-  });
-
-  ui.topMenuDrivers?.addEventListener("click", () => {
-    window.location.href = "delivery.html";
-    setHidden(ui.topMenuList, true);
-  });
-
-  ui.topMenuHistory?.addEventListener("click", () => {
-    window.location.href = "history.html";
-  });
-
-  ui.topMenuReports?.addEventListener("click", () => {
-    showOrderApp();
-    setActiveTab("reports");
-    setHidden(ui.topMenuList, true);
-  });
+  ui.homeButton?.addEventListener("click", showHome);
 
   ui.refreshBtn?.addEventListener("click", () => refreshCatalog());
   ui.orderTabBtn?.addEventListener("click", () => setActiveTab("order"));
