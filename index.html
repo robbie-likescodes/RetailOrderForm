@@ -130,56 +130,14 @@
       </div>
 
       <div class="reports__section">
-        <h3>Product totals by store</h3>
-        <div class="reports__filters">
-          <label class="field">
-            <span>Product</span>
-            <select id="reportProduct">
-              <option value="">Select a product</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Store</span>
-            <select id="reportStore">
-              <option value="all">All stores</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Start date &amp; time</span>
-            <input id="reportStart" type="datetime-local" />
-          </label>
-          <label class="field">
-            <span>End date &amp; time</span>
-            <input id="reportEnd" type="datetime-local" />
-          </label>
-          <label class="field">
-            <span>Sort</span>
-            <select id="reportSort">
-              <option value="qty-desc">Qty (high to low)</option>
-              <option value="qty-asc">Qty (low to high)</option>
-              <option value="store-asc">Store (A → Z)</option>
-              <option value="store-desc">Store (Z → A)</option>
-            </select>
-          </label>
-        </div>
-        <div class="tableWrap">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Store</th>
-                <th>Qty</th>
-              </tr>
-            </thead>
-            <tbody id="reportStoreBody"></tbody>
-          </table>
-          <div class="empty" id="reportStoreEmpty" hidden>Select a product and timeframe to see totals.</div>
-        </div>
-      </div>
-
-      <div class="reports__section">
         <h3>Side-by-side store comparison</h3>
         <p class="muted reports__hint">Compare stores across quick timeframes (last month, last quarter, last year) plus a custom range.</p>
         <div class="reports__filters reports__filters--compact">
+          <label class="field">
+            <span>Stores</span>
+            <select id="compareStores" multiple>
+            </select>
+          </label>
           <label class="field">
             <span>Compare by</span>
             <select id="compareScope">
