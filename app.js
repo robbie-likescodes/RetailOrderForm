@@ -740,6 +740,18 @@ function renderCategories() {
   state.steps.forEach(p => {
     counts.set(p.category, (counts.get(p.category) || 0) + 1);
   });
+  const selectedByCategory = new Map();
+  state.steps.forEach(item => {
+    const qty = getQty(item.sku);
+    if (qty <= 0) return;
+    if (!selectedByCategory.has(item.category)) {
+      selectedByCategory.set(item.category, []);
+    }
+    selectedByCategory.get(item.category).push({
+      name: item.name,
+      qty
+    });
+  });
 
   const categoriesFromProducts = [...new Set(state.steps.map(p => p.category))];
   const orderedCategories = state.categories.length
@@ -753,11 +765,25 @@ function renderCategories() {
     if (!itemCount && CONFIG.HIDE_EMPTY_CATEGORIES) return;
     const catRow = state.categories.find(c => c.category === category);
     const label = catRow?.display_name || category;
+    const selectedItems = selectedByCategory.get(category) || [];
+    const previewLimit = 2;
+    const previewItems = selectedItems.slice(0, previewLimit);
+    const remainingCount = Math.max(0, selectedItems.length - previewItems.length);
+    const previewHtml = previewItems.map(item => `
+      <div class="categoryCard__summaryItem">${escapeHtml(item.name)} x ${item.qty}</div>
+    `).join("");
+    const moreHtml = remainingCount > 0
+      ? `<div class="categoryCard__summaryMore">+${remainingCount} more</div>`
+      : "";
+    const summaryHtml = selectedItems.length
+      ? `<div class="categoryCard__summary">${previewHtml}${moreHtml}</div>`
+      : "";
     const card = document.createElement("button");
     card.type = "button";
     card.className = "categoryCard";
     card.innerHTML = `
       <div>${escapeHtml(label)}</div>
+      ${summaryHtml}
       <div class="categoryCard__meta">${itemCount} item${itemCount === 1 ? "" : "s"}</div>
     `;
     card.addEventListener("click", () => {
