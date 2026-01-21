@@ -192,7 +192,33 @@ const state = {
 // =========================
 function log(...args) { if (DEBUG) console.log("[OrderPortal]", ...args); }
 
-function nowIso() { return new Date().toISOString(); }
+function nowIso() {
+  const date = new Date();
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Anchorage",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZoneName: "shortOffset",
+  });
+  const parts = formatter.formatToParts(date).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+  const offsetMatch = /GMT([+-]\d{1,2})(?::?(\d{2}))?/.exec(parts.timeZoneName || "");
+  const rawOffset = offsetMatch ? offsetMatch[1] : "+0";
+  const offsetMinutes = offsetMatch && offsetMatch[2] ? offsetMatch[2] : "00";
+  const offsetHours = String(Math.abs(Number(rawOffset))).padStart(2, "0");
+  const offsetSign = Number(rawOffset) < 0 ? "-" : "+";
+  const offset = `${offsetSign}${offsetHours}:${offsetMinutes}`;
+  const milliseconds = String(date.getMilliseconds()).padStart(3, "0");
+
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.${milliseconds}${offset}`;
+}
 
 function todayDateValue() {
   const today = new Date();
