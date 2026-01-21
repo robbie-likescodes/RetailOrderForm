@@ -89,48 +89,40 @@ function doGet(e) {
     }
 
     if (action === "order_history") {
-      const getTime = (value) => {
-        if (value instanceof Date) return value.getTime();
-        const parsed = Date.parse(value);
-        return Number.isNaN(parsed) ? 0 : parsed;
-      };
+      const rawOrders = getSheetRows_(CONFIG.SHEETS.ORDERS)
+        .filter(row => row.store);
+      const orders = rawOrders.map((row, index) => {
+        const items = extractOrderItems_(row);
+        const totals = items.reduce(
+          (acc, item) => {
+            acc.itemCount += 1;
+            acc.totalQty += Number(item.qty || 0);
+            return acc;
+          },
+          { itemCount: 0, totalQty: 0 }
+        );
 
-      const orders = getSheetRows_(CONFIG.SHEETS.ORDERS)
-        .filter(row => row.order_id && row.store)
-        .map(row => ({
-          order_id: String(row.order_id || "").trim(),
-          created_at: String(row.created_at || "").trim(),
+        const fallbackOrderId = `row_${index + 2}`;
+
+        return {
+          order_id: String(row.order_id || fallbackOrderId).trim(),
+          created_at: String(row.timestamp || "").trim(),
           store: String(row.store || "").trim(),
           placed_by: String(row.placed_by || "").trim(),
           email: String(row.email || "").trim(),
-          requested_date: String(row.requested_date || "").trim(),
           notes: String(row.notes || "").trim(),
-          item_count: row.item_count || "",
-          total_qty: row.total_qty || "",
-        }))
-        .sort((a, b) => {
-          const storeCompare = String(a.store || "").localeCompare(String(b.store || ""));
-          if (storeCompare !== 0) return storeCompare;
-          return getTime(b.created_at) - getTime(a.created_at);
-        });
+          item_count: totals.itemCount,
+          total_qty: totals.totalQty,
+        };
+      });
 
-      const items = getSheetRows_(CONFIG.SHEETS.ORDER_ITEMS)
-        .filter(row => row.order_id && row.sku)
-        .map(row => ({
-          order_id: String(row.order_id || "").trim(),
-          item_no: String(row.item_no || "").trim(),
-          sku: String(row.sku || "").trim(),
-          name: String(row.name || "").trim(),
-          category: String(row.category || "").trim(),
-          unit: String(row.unit || "").trim(),
-          pack_size: String(row.pack_size || "").trim(),
-          qty: row.qty || "",
+      const items = rawOrders.flatMap((row, index) => (
+        extractOrderItems_(row).map(item => ({
+          order_id: String(row.order_id || `row_${index + 2}`).trim(),
+          name: item.name,
+          qty: item.qty,
         }))
-        .sort((a, b) => {
-          const orderCompare = String(a.order_id || "").localeCompare(String(b.order_id || ""));
-          if (orderCompare !== 0) return orderCompare;
-          return String(a.name || a.sku || "").localeCompare(String(b.name || b.sku || ""));
-        });
+      ));
 
       return jsonResponse({
         ok: true,
@@ -243,26 +235,9 @@ function doPost(e) {
 }
 
 function jsonResponse(payload) {
-  const output = ContentService
+  return ContentService
     .createTextOutput(JSON.stringify(payload))
     .setMimeType(ContentService.MimeType.JSON);
-
-  return withCors_(output);
-}
-
-function doOptions() {
-  const output = ContentService.createTextOutput("")
-    .setMimeType(ContentService.MimeType.JSON);
-
-  return withCors_(output);
-}
-
-function withCors_(output) {
-  output.setHeader("Access-Control-Allow-Origin", "*");
-  output.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  output.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  output.setHeader("Access-Control-Max-Age", "3600");
-  return output;
 }
 
 function parseJson_(e) {
