@@ -104,6 +104,16 @@ const ui = {
   review: $("review"),
   reportsPanel: $("reports"),
 
+  catalog: $("catalog"),
+  items: $("items"),
+  categoryList: $("categoryList"),
+  itemList: $("itemList"),
+  selectedSummary: $("selectedSummary"),
+  itemsSummary: $("itemsSummary"),
+  categoryTitle: $("categoryTitle"),
+  categoryMeta: $("categoryMeta"),
+  backToCategories: $("backToCategories"),
+
   pillCategory: $("pillCategory"),
   productName: $("productName"),
   productMeta: $("productMeta"),
@@ -119,6 +129,7 @@ const ui = {
   submitBtn: $("submitBtn"),
   submitError: $("submitError"),
   submitSuccess: $("submitSuccess"),
+  statusBox: $("statusBox"),
   todayOrdersList: $("todayOrdersList"),
 
   // Optional extras
@@ -297,6 +308,11 @@ function setHidden(el, hidden) {
 function showError(msg) {
   setHidden(ui.errorBox, !msg);
   setText(ui.errorBox, msg || "");
+}
+
+function showStatus(msg) {
+  setHidden(ui.statusBox, !msg);
+  setText(ui.statusBox, msg || "");
 }
 
 function showSubmitError(msg) {
@@ -932,8 +948,9 @@ async function fetchJson(url, { timeoutMs = 15000 } = {}) {
     const text = await res.text();
     let data = null;
     try { data = JSON.parse(text); } catch { /* not json */ }
+    const looksLikeHtml = /<(!doctype|html|head|body)/i.test(text);
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
-    if (!data) {
+    if (!data || looksLikeHtml) {
       throw new Error(
         `Expected JSON but received ${res.headers.get("content-type") || "unknown content-type"}. ` +
         `Response: ${text.slice(0, 200)}`
@@ -954,6 +971,8 @@ function isCacheStale() {
 
 async function refreshCatalog({ force = false } = {}) {
   showError("");
+  showStatus("");
+  console.log("refresh start");
 
   if (CONFIG.CONFIRM_REFRESH_IF_DIRTY && state.dirty && !force) {
     const ok = confirm("Refreshing may reset your position. Continue?");
@@ -995,17 +1014,23 @@ async function refreshCatalog({ force = false } = {}) {
 
     const cats = normalizeCategoryRows(catsResp?.categories || []);
     const prods = normalizeProductRows(prodsResp.products || []);
+    console.log("fetched categories count", cats.length);
+    console.log("fetched products count", prods.length);
 
     if (!prods.length) {
       throw new Error("No products returned from Google Sheets. Verify your Products sheet has active rows.");
     }
 
+    const previousCategory = state.selectedCategory;
     state.categories = cats;
     state.products = prods;
 
     // Reset idx if steps changed significantly
     buildSteps();
     state.idx = Math.min(state.idx, Math.max(0, state.steps.length - 1));
+    if (previousCategory && !state.steps.some((item) => item.category === previousCategory)) {
+      state.selectedCategory = "";
+    }
 
     // Update timestamps
     const iso = prodsResp.updated_at || catsResp?.updated_at || nowIso();
@@ -1016,11 +1041,15 @@ async function refreshCatalog({ force = false } = {}) {
 
     saveCache();
     updateReportOptions();
+    console.log("render start");
     renderWizard();
+    console.log("render end");
     state.dirty = false;
+    showStatus(`Catalog refreshed. ${cats.length} categories • ${prods.length} products.`);
 
   } catch (err) {
     showError(`Could not refresh. Using cached data if available. (${String(err)})`);
+    showStatus("");
     buildSteps();
     if (state.selectedCategory) {
       showItems();
