@@ -34,7 +34,7 @@ const CONFIG = {
 
   // POST URL is the same /exec (Apps Script doPost)
   POST_ORDER: () => `${CONFIG.SCRIPT_URL}`,
-  GET_ORDERS: (t) => `${CONFIG.SCRIPT_URL}?action=orders&t=${t}`,
+  GET_ORDERS: (t) => `${CONFIG.SCRIPT_URL}?action=order_history&t=${t}`,
 
   // Behavior
   CACHE_TTL_MS: 1000 * 60 * 60 * 12, // 12 hours (soft)
@@ -243,18 +243,43 @@ function normalizeOrderRows(rows) {
           sku: normalizedItem.sku || item.sku || "",
           item_no: normalizedItem.item_no || item.item_no || "",
           name: normalizedItem.name || item.name || "",
+          category: normalizedItem.category || item.category || "",
+          unit: normalizedItem.unit || item.unit || "",
+          pack_size: normalizedItem.pack_size || item.pack_size || "",
           qty: Number(normalizedItem.qty ?? item.qty ?? 0) || 0,
         };
       })
       : [];
     return {
-      id: normalized.id || row.id || `remote-${Math.random().toString(36).slice(2)}`,
+      id: normalized.id || normalized.order_id || row.id || row.order_id || `remote-${Math.random().toString(36).slice(2)}`,
       store: normalized.store || row.store || "",
       requested_date: normalized.requested_date || row.requested_date || "",
       placed_by: normalized.placed_by || row.placed_by || "",
+      notes: normalized.notes || row.notes || "",
       items: normalizedItems,
       created_at: normalized.created_at || row.created_at || "",
     };
+  });
+}
+
+function attachItemsToOrders(orders, items) {
+  if (!Array.isArray(orders)) return [];
+  if (!Array.isArray(items) || items.length === 0) return orders;
+
+  const itemsByOrder = new Map();
+  items.forEach((item) => {
+    const orderId = String(item.order_id || item.orderId || "").trim();
+    if (!orderId) return;
+    if (!itemsByOrder.has(orderId)) itemsByOrder.set(orderId, []);
+    itemsByOrder.get(orderId).push(item);
+  });
+
+  return orders.map((order) => {
+    if (Array.isArray(order.items) && order.items.length) return order;
+    const orderId = String(order.order_id || order.orderId || order.id || "").trim();
+    if (!orderId) return order;
+    const orderItems = itemsByOrder.get(orderId) || [];
+    return { ...order, items: orderItems };
   });
 }
 
@@ -1042,7 +1067,8 @@ async function refreshReports({ force = false } = {}) {
     const t = Date.now();
     const ordersResp = await fetchJson(CONFIG.GET_ORDERS(t));
     if (!ordersResp.ok) throw new Error(ordersResp.error || "Orders endpoint failed");
-    const orders = normalizeOrderRows(ordersResp.orders || []);
+    const mergedOrders = attachItemsToOrders(ordersResp.orders || [], ordersResp.items || []);
+    const orders = normalizeOrderRows(mergedOrders);
     state.orders = orders;
     const iso = nowIso();
     state.ordersUpdatedAt = iso;
