@@ -26,7 +26,7 @@
 // =========================
 const CONFIG = {
   // Put your web app URL here (ends with /exec)
-  SCRIPT_URL: "https://script.google.com/macros/s/AKfycbw6ogE8v1_hlV1iCGhPGo0SpDzlzzVYNrjQ8rNk2e7lgQos66GBp_JBazt3_g7H4tCz/exec",
+  SCRIPT_URL: "https://script.google.com/macros/s/AKfycbz5pPLqQs4yEwqGXgkNF33J0FtdXUurTeMebjObAIuFf-_h0IUVkFy5UYiFAFss0nQ8/exec",
 
   // Endpoints
   GET_CATEGORIES: (t) => `${CONFIG.SCRIPT_URL}?action=categories&t=${t}`,
