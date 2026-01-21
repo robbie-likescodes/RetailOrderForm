@@ -927,10 +927,6 @@ async function fetchJson(url, { timeoutMs = 15000 } = {}) {
       signal: controller.signal,
       mode: "cors",
       cache: "no-store",
-      headers: {
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
-      },
     });
     const text = await res.text();
     let data = null;
