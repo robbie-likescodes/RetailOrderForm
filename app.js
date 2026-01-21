@@ -129,9 +129,8 @@ const ui = {
   refreshReportsBtn: $("refreshReportsBtn"),
   reportProduct: $("reportProduct"),
   reportStore: $("reportStore"),
-  reportDay: $("reportDay"),
-  reportMonth: $("reportMonth"),
-  reportYear: $("reportYear"),
+  reportStart: $("reportStart"),
+  reportEnd: $("reportEnd"),
   reportSort: $("reportSort"),
   reportStoreBody: $("reportStoreBody"),
   reportStoreEmpty: $("reportStoreEmpty"),
@@ -175,9 +174,8 @@ const state = {
   reports: {
     product: "",
     store: "all",
-    day: "",
-    month: "",
-    year: "",
+    reportStart: "",
+    reportEnd: "",
     compareProduct: "",
     compareCategory: "",
     compareScope: "product",
@@ -303,21 +301,28 @@ function isFiniteInt(n) {
 
 function parseDateValue(value) {
   if (!value) return null;
-  const [year, month, day] = String(value).split("-").map(Number);
+  const [datePart, timePart] = String(value).split("T");
+  const [year, month, day] = String(datePart).split("-").map(Number);
   if (!year || !month || !day) return null;
-  return new Date(year, month - 1, day);
-}
-
-function isSameDay(a, b) {
-  return a && b
-    && a.getFullYear() === b.getFullYear()
-    && a.getMonth() === b.getMonth()
-    && a.getDate() === b.getDate();
+  let hours = 0;
+  let minutes = 0;
+  if (timePart) {
+    const [hourPart, minutePart] = timePart.split(":").map(Number);
+    if (Number.isFinite(hourPart)) hours = hourPart;
+    if (Number.isFinite(minutePart)) minutes = minutePart;
+  }
+  return new Date(year, month - 1, day, hours, minutes);
 }
 
 function formatShortDate(date) {
   if (!date) return "";
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function formatDateRange(start, end) {
@@ -1164,17 +1169,6 @@ function updateReportOptions() {
   categoryMap.forEach((label, value) => categoryOptions.push({ value, label }));
   buildSelectOptions(ui.compareCategory, categoryOptions, state.reports.compareCategory);
 
-  const years = new Set();
-  state.orders.forEach((order) => {
-    const date = parseDateValue(order.requested_date);
-    if (date) years.add(date.getFullYear());
-  });
-  const yearOptions = [{ value: "", label: "All years" }];
-  Array.from(years).sort((a, b) => b - a).forEach((year) => {
-    yearOptions.push({ value: String(year), label: String(year) });
-  });
-  buildSelectOptions(ui.reportYear, yearOptions, state.reports.year);
-
   if (ui.reportHistoryCount) {
     ui.reportHistoryCount.textContent = String(state.orders.length);
   }
@@ -1188,9 +1182,8 @@ function syncReportFiltersFromInputs() {
   if (!ui.reportProduct) return;
   state.reports.product = normalizeProductKey(ui.reportProduct.value);
   state.reports.store = ui.reportStore?.value || "all";
-  state.reports.day = ui.reportDay?.value || "";
-  state.reports.month = ui.reportMonth?.value || "";
-  state.reports.year = ui.reportYear?.value || "";
+  state.reports.reportStart = ui.reportStart?.value || "";
+  state.reports.reportEnd = ui.reportEnd?.value || "";
   state.reports.compareProduct = normalizeProductKey(ui.compareProduct?.value);
   state.reports.compareCategory = ui.compareCategory?.value || "";
   state.reports.compareScope = ui.compareScope?.value || state.reports.compareScope;
@@ -1202,13 +1195,9 @@ function syncReportFiltersFromInputs() {
 
 function passesDateFilters(orderDate, filters) {
   if (!orderDate) return false;
-  const dayDate = parseDateValue(filters.day);
-  if (dayDate) return isSameDay(orderDate, dayDate);
-
-  const monthNum = filters.month ? Number(filters.month) : null;
-  const yearNum = filters.year ? Number(filters.year) : null;
-  if (yearNum && orderDate.getFullYear() !== yearNum) return false;
-  if (monthNum && orderDate.getMonth() + 1 !== monthNum) return false;
+  const rangeStart = parseDateValue(filters.reportStart);
+  const rangeEnd = parseDateValue(filters.reportEnd);
+  if (rangeStart || rangeEnd) return isWithinRange(orderDate, rangeStart, rangeEnd);
   return true;
 }
 
@@ -1253,7 +1242,7 @@ function renderReports() {
   syncReportFiltersFromInputs();
   updateCompareScopeUI();
 
-  const { product, store, day, month, year, sort } = state.reports;
+  const { product, store, reportStart, reportEnd, sort } = state.reports;
   const storeTotals = new Map();
   const stores = getStoreList();
   stores.forEach((storeName) => storeTotals.set(storeName, 0));
@@ -1263,7 +1252,7 @@ function renderReports() {
     state.orders.forEach((order) => {
       if (!order || !order.requested_date) return;
       const orderDate = parseDateValue(order.requested_date);
-      if (!passesDateFilters(orderDate, { day, month, year })) return;
+      if (!passesDateFilters(orderDate, { reportStart, reportEnd })) return;
       if (store !== "all" && order.store !== store) return;
 
       (order.items || []).forEach((item) => {
@@ -1653,9 +1642,8 @@ function wireEvents() {
   const rerenderReports = () => renderReports();
   ui.reportProduct?.addEventListener("change", rerenderReports);
   ui.reportStore?.addEventListener("change", rerenderReports);
-  ui.reportMonth?.addEventListener("change", rerenderReports);
-  ui.reportYear?.addEventListener("change", rerenderReports);
-  ui.reportDay?.addEventListener("change", rerenderReports);
+  ui.reportStart?.addEventListener("change", rerenderReports);
+  ui.reportEnd?.addEventListener("change", rerenderReports);
   ui.reportSort?.addEventListener("change", rerenderReports);
   ui.compareScope?.addEventListener("change", rerenderReports);
   ui.compareProduct?.addEventListener("change", rerenderReports);
