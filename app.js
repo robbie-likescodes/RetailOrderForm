@@ -141,12 +141,18 @@ const ui = {
   reportSort: $("reportSort"),
   reportStoreBody: $("reportStoreBody"),
   reportStoreEmpty: $("reportStoreEmpty"),
+  compareScope: $("compareScope"),
   compareProduct: $("compareProduct"),
+  compareCategory: $("compareCategory"),
+  compareProductField: $("compareProductField"),
+  compareCategoryField: $("compareCategoryField"),
   compareStart: $("compareStart"),
   compareEnd: $("compareEnd"),
   compareSort: $("compareSort"),
+  compareHead: $("compareHead"),
   compareBody: $("compareBody"),
   compareEmpty: $("compareEmpty"),
+  compareRangeHint: $("compareRangeHint"),
 };
 
 // =========================
@@ -179,6 +185,8 @@ const state = {
     month: "",
     year: "",
     compareProduct: "",
+    compareCategory: "",
+    compareScope: "product",
     compareStart: "",
     compareEnd: "",
     sort: "qty-desc",
@@ -314,6 +322,30 @@ function isSameDay(a, b) {
     && a.getFullYear() === b.getFullYear()
     && a.getMonth() === b.getMonth()
     && a.getDate() === b.getDate();
+}
+
+function formatShortDate(date) {
+  if (!date) return "";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatDateRange(start, end) {
+  if (start && end) return `${formatShortDate(start)} – ${formatShortDate(end)}`;
+  if (start) return `From ${formatShortDate(start)}`;
+  if (end) return `Up to ${formatShortDate(end)}`;
+  return "";
+}
+
+function startOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function endOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0);
+}
+
+function addMonths(date, delta) {
+  return new Date(date.getFullYear(), date.getMonth() + delta, 1);
 }
 
 function isWithinRange(date, start, end) {
@@ -1072,6 +1104,26 @@ function getProductMap() {
   return map;
 }
 
+function getCategoryMap() {
+  const map = new Map();
+  state.categories.forEach((category) => {
+    const key = category.category || category.display_name;
+    if (!key) return;
+    map.set(key, category.display_name || key);
+  });
+  state.products.forEach((product) => {
+    if (!product.category || map.has(product.category)) return;
+    map.set(product.category, product.category);
+  });
+  state.orders.forEach((order) => {
+    (order.items || []).forEach((item) => {
+      if (!item.category || map.has(item.category)) return;
+      map.set(item.category, item.category);
+    });
+  });
+  return map;
+}
+
 function updateReportOptions() {
   const stores = getStoreList();
   buildSelectOptions(
@@ -1085,6 +1137,11 @@ function updateReportOptions() {
   productMap.forEach((label, value) => productOptions.push({ value, label }));
   buildSelectOptions(ui.reportProduct, productOptions, state.reports.product);
   buildSelectOptions(ui.compareProduct, productOptions, state.reports.compareProduct);
+
+  const categoryMap = getCategoryMap();
+  const categoryOptions = [{ value: "", label: "Select a category" }];
+  categoryMap.forEach((label, value) => categoryOptions.push({ value, label }));
+  buildSelectOptions(ui.compareCategory, categoryOptions, state.reports.compareCategory);
 
   const years = new Set();
   state.orders.forEach((order) => {
@@ -1114,6 +1171,8 @@ function syncReportFiltersFromInputs() {
   state.reports.month = ui.reportMonth?.value || "";
   state.reports.year = ui.reportYear?.value || "";
   state.reports.compareProduct = normalizeProductKey(ui.compareProduct?.value);
+  state.reports.compareCategory = ui.compareCategory?.value || "";
+  state.reports.compareScope = ui.compareScope?.value || state.reports.compareScope;
   state.reports.compareStart = ui.compareStart?.value || "";
   state.reports.compareEnd = ui.compareEnd?.value || "";
   state.reports.sort = ui.reportSort?.value || state.reports.sort;
@@ -1135,6 +1194,17 @@ function passesDateFilters(orderDate, filters) {
 function itemMatchesProduct(item, productKey) {
   if (!productKey) return false;
   return item.sku === productKey || item.item_no === productKey || item.name === productKey;
+}
+
+function itemMatchesCategory(item, categoryKey) {
+  if (!categoryKey) return false;
+  return normalizeKey(item.category) === normalizeKey(categoryKey);
+}
+
+function updateCompareScopeUI() {
+  const isCategory = state.reports.compareScope === "category";
+  setHidden(ui.compareProductField, isCategory);
+  setHidden(ui.compareCategoryField, !isCategory);
 }
 
 function sortStores(stores, totals, sortKey) {
@@ -1160,6 +1230,7 @@ function sortStores(stores, totals, sortKey) {
 function renderReports() {
   if (!ui.reportsPanel) return;
   syncReportFiltersFromInputs();
+  updateCompareScopeUI();
 
   const { product, store, day, month, year, sort } = state.reports;
   const storeTotals = new Map();
@@ -1212,53 +1283,155 @@ function renderReports() {
   }
 
   const compareProduct = state.reports.compareProduct;
+  const compareCategory = state.reports.compareCategory;
+  const compareScope = state.reports.compareScope;
   const compareSort = state.reports.compareSort;
   const compareStart = parseDateValue(state.reports.compareStart);
   const compareEnd = parseDateValue(state.reports.compareEnd);
-  const compareTotals = new Map();
-  stores.forEach((storeName) => compareTotals.set(storeName, 0));
-
-  let compareValid = !!compareProduct;
+  const compareTarget = compareScope === "category" ? compareCategory : compareProduct;
+  let compareValid = !!compareTarget;
   if (compareValid && compareStart && compareEnd && compareStart > compareEnd) {
     compareValid = false;
     if (ui.compareEmpty) ui.compareEmpty.textContent = "Start date must be before end date.";
   } else if (ui.compareEmpty) {
-    ui.compareEmpty.textContent = "Choose a product and date range to compare stores.";
+    ui.compareEmpty.textContent = "Select a product or category to compare stores.";
   }
+
+  const now = new Date();
+  const lastMonthAnchor = addMonths(now, -1);
+  const lastMonthStart = startOfMonth(lastMonthAnchor);
+  const lastMonthEnd = endOfMonth(lastMonthAnchor);
+  const lastQuarterEnd = endOfMonth(addMonths(now, -1));
+  const lastQuarterStart = startOfMonth(addMonths(now, -3));
+  const lastYearStart = new Date(now.getFullYear() - 1, 0, 1);
+  const lastYearEnd = new Date(now.getFullYear() - 1, 11, 31);
+  const customLabel = formatDateRange(compareStart, compareEnd) || "Set a custom range";
+  const frames = [
+    {
+      key: "lastMonth",
+      label: "Last month",
+      rangeLabel: formatDateRange(lastMonthStart, lastMonthEnd),
+      start: lastMonthStart,
+      end: lastMonthEnd,
+      active: true,
+    },
+    {
+      key: "lastQuarter",
+      label: "Last quarter",
+      rangeLabel: formatDateRange(lastQuarterStart, lastQuarterEnd),
+      start: lastQuarterStart,
+      end: lastQuarterEnd,
+      active: true,
+    },
+    {
+      key: "lastYear",
+      label: "Last year",
+      rangeLabel: formatDateRange(lastYearStart, lastYearEnd),
+      start: lastYearStart,
+      end: lastYearEnd,
+      active: true,
+    },
+    {
+      key: "custom",
+      label: "Custom range",
+      rangeLabel: customLabel,
+      start: compareStart,
+      end: compareEnd,
+      active: !!(compareStart || compareEnd),
+    },
+  ];
+
+  if (ui.compareRangeHint) {
+    ui.compareRangeHint.textContent = "Timeframes use calendar periods. Custom range uses the start/end dates above.";
+  }
+
+  const compareTotals = new Map();
+  stores.forEach((storeName) => {
+    const totals = {};
+    frames.forEach((frame) => { totals[frame.key] = 0; });
+    compareTotals.set(storeName, totals);
+  });
 
   if (compareValid) {
     state.orders.forEach((order) => {
       if (!order || !order.requested_date) return;
       const orderDate = parseDateValue(order.requested_date);
-      if (!isWithinRange(orderDate, compareStart, compareEnd)) return;
+      if (!orderDate) return;
+      if (!stores.includes(order.store)) return;
 
+      let matchedQty = 0;
       (order.items || []).forEach((item) => {
-        if (!itemMatchesProduct(item, compareProduct)) return;
-        const current = compareTotals.get(order.store) || 0;
-        const qty = Number(item.qty) || 0;
-        compareTotals.set(order.store, current + qty);
+        const match = compareScope === "category"
+          ? itemMatchesCategory(item, compareTarget)
+          : itemMatchesProduct(item, compareTarget);
+        if (!match) return;
+        matchedQty += Number(item.qty) || 0;
+      });
+      if (!matchedQty) return;
+
+      frames.forEach((frame) => {
+        if (!frame.active) return;
+        if (!isWithinRange(orderDate, frame.start, frame.end)) return;
+        const totals = compareTotals.get(order.store);
+        if (totals) totals[frame.key] += matchedQty;
       });
     });
+  }
+
+  const primaryFrame = frames.find((frame) => frame.key === "custom" && frame.active) || frames[0];
+  const sortTotals = new Map();
+  stores.forEach((storeName) => {
+    const totals = compareTotals.get(storeName);
+    sortTotals.set(storeName, totals ? totals[primaryFrame.key] : 0);
+  });
+
+  if (ui.compareHead) {
+    ui.compareHead.innerHTML = "";
+    const headRow = document.createElement("tr");
+    const storeHead = document.createElement("th");
+    storeHead.textContent = "Store";
+    headRow.appendChild(storeHead);
+    frames.forEach((frame) => {
+      const th = document.createElement("th");
+      const title = document.createElement("div");
+      title.className = "table__headTitle";
+      title.textContent = frame.label;
+      const sub = document.createElement("div");
+      sub.className = "table__headSub";
+      sub.textContent = frame.rangeLabel;
+      th.appendChild(title);
+      th.appendChild(sub);
+      headRow.appendChild(th);
+    });
+    ui.compareHead.appendChild(headRow);
   }
 
   if (ui.compareBody) {
     ui.compareBody.innerHTML = "";
     if (compareValid && stores.length) {
-      const sortedStores = sortStores(stores, compareTotals, compareSort);
+      const sortedStores = sortStores(stores, sortTotals, compareSort);
       sortedStores.forEach((storeName) => {
         const row = document.createElement("tr");
         const nameCell = document.createElement("td");
         nameCell.textContent = storeName;
-        const qtyCell = document.createElement("td");
-        qtyCell.textContent = String(compareTotals.get(storeName) || 0);
         row.appendChild(nameCell);
-        row.appendChild(qtyCell);
+        frames.forEach((frame) => {
+          const qtyCell = document.createElement("td");
+          if (!frame.active) {
+            qtyCell.textContent = "—";
+            qtyCell.className = "table__cellMuted";
+          } else {
+            const totals = compareTotals.get(storeName) || {};
+            qtyCell.textContent = String(totals[frame.key] || 0);
+          }
+          row.appendChild(qtyCell);
+        });
         ui.compareBody.appendChild(row);
       });
       if (ui.reportTopStore) {
-        const topStore = sortStores(stores, compareTotals, "qty-desc")[0];
+        const topStore = sortStores(stores, sortTotals, "qty-desc")[0];
         ui.reportTopStore.textContent = topStore
-          ? `${topStore} (${compareTotals.get(topStore) || 0})`
+          ? `${topStore} (${sortTotals.get(topStore) || 0})`
           : "—";
       }
     }
@@ -1490,7 +1663,9 @@ function wireEvents() {
   ui.reportYear?.addEventListener("change", rerenderReports);
   ui.reportDay?.addEventListener("change", rerenderReports);
   ui.reportSort?.addEventListener("change", rerenderReports);
+  ui.compareScope?.addEventListener("change", rerenderReports);
   ui.compareProduct?.addEventListener("change", rerenderReports);
+  ui.compareCategory?.addEventListener("change", rerenderReports);
   ui.compareStart?.addEventListener("change", rerenderReports);
   ui.compareEnd?.addEventListener("change", rerenderReports);
   ui.compareSort?.addEventListener("change", rerenderReports);
