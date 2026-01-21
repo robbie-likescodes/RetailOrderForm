@@ -93,6 +93,16 @@ const ui = {
   review: $("review"),
   reportsPanel: $("reports"),
 
+  catalog: $("catalog"),
+  items: $("items"),
+  categoryList: $("categoryList"),
+  itemList: $("itemList"),
+  selectedSummary: $("selectedSummary"),
+  itemsSummary: $("itemsSummary"),
+  categoryTitle: $("categoryTitle"),
+  categoryMeta: $("categoryMeta"),
+  backToCategories: $("backToCategories"),
+
   pillCategory: $("pillCategory"),
   productName: $("productName"),
   productMeta: $("productMeta"),
@@ -108,6 +118,7 @@ const ui = {
   submitBtn: $("submitBtn"),
   submitError: $("submitError"),
   submitSuccess: $("submitSuccess"),
+  statusBox: $("statusBox"),
   todayOrdersList: $("todayOrdersList"),
 
   // Optional extras
