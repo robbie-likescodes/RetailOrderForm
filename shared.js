@@ -293,6 +293,7 @@
           throw err;
         }
 
+        const parsedJson = safeJsonParse(text);
         const data = parsedJson;
         if (!data) {
           const err = new Error("Failed to parse JSON response.");
