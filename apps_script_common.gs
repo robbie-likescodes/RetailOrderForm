@@ -167,3 +167,36 @@ function extractOrderItems_(row) {
 
   return items;
 }
+
+function parseItemsJson_(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+      return [];
+    }
+  }
+  return [];
+}
+
+function collectOrderItemsFromRow_(row) {
+  const fromJson = parseItemsJson_(row.items_json || row.items || "");
+  if (fromJson.length) {
+    return fromJson.map(item => ({
+      item_no: String(item.item_no || item.item || "").trim(),
+      sku: String(item.sku || "").trim(),
+      name: String(item.name || item.description || item.sku || "Item").trim(),
+      category: String(item.category || "").trim(),
+      unit: String(item.unit || "").trim(),
+      pack_size: String(item.pack_size || item.pack || "").trim(),
+      qty: item.qty || "",
+    }));
+  }
+  return extractOrderItems_(row).map(item => ({
+    name: String(item.name || "Item").trim(),
+    qty: item.qty || "",
+  }));
+}
