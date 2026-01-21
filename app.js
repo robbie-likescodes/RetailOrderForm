@@ -87,7 +87,7 @@ const ui = {
   homeDrivers: $("homeDrivers"),
   homeHistory: $("homeHistory"),
   homeReports: $("homeReports"),
-  homeButton: $("homeButton"),
+  topbarHomeBtn: $("topbarHomeBtn"),
   lastUpdated: $("lastUpdated"),
   refreshBtn: $("refreshBtn"),
   orderTabBtn: $("orderTabBtn"),
@@ -186,6 +186,7 @@ const state = {
     sort: "qty-desc",
     compareSort: "qty-desc",
   },
+  activeTab: "order",
 };
 
 // =========================
@@ -919,8 +920,7 @@ async function refreshCatalog({ force = false } = {}) {
     return;
   }
 
-  ui.refreshBtn.disabled = true;
-  ui.refreshBtn.textContent = "Refreshing...";
+  setTopbarRefreshState({ isLoading: true, label: "Refreshing products from Google Sheets" });
 
   try {
     const t = Date.now();
@@ -963,8 +963,8 @@ async function refreshCatalog({ force = false } = {}) {
       showCatalog();
     }
   } finally {
-    ui.refreshBtn.disabled = false;
-    ui.refreshBtn.textContent = "Refresh";
+    updateRefreshButtonLabel();
+    setTopbarRefreshState({ isLoading: false });
   }
 }
 
@@ -990,6 +990,32 @@ function isReportDataStale() {
   return (Date.now() - last.getTime()) > CONFIG.REPORT_REFRESH_MS;
 }
 
+function getRefreshLabel() {
+  return state.activeTab === "reports"
+    ? "Refresh reports from Google Sheets"
+    : "Refresh products from Google Sheets";
+}
+
+function setTopbarRefreshState({ isLoading, label } = {}) {
+  if (!ui.refreshBtn) return;
+  if (typeof isLoading === "boolean") {
+    ui.refreshBtn.disabled = isLoading;
+    if (isLoading) {
+      ui.refreshBtn.setAttribute("aria-busy", "true");
+    } else {
+      ui.refreshBtn.removeAttribute("aria-busy");
+    }
+  }
+  if (label) {
+    ui.refreshBtn.setAttribute("aria-label", label);
+    ui.refreshBtn.setAttribute("title", label);
+  }
+}
+
+function updateRefreshButtonLabel() {
+  setTopbarRefreshState({ label: getRefreshLabel() });
+}
+
 async function refreshReports({ force = false } = {}) {
   if (!CONFIG.SCRIPT_URL || CONFIG.SCRIPT_URL.includes("PASTE_")) {
     setReportStatus("History: unavailable (missing Apps Script URL).");
@@ -1005,6 +1031,7 @@ async function refreshReports({ force = false } = {}) {
     ui.refreshReportsBtn.disabled = true;
     ui.refreshReportsBtn.textContent = "Refreshing...";
   }
+  setTopbarRefreshState({ isLoading: true, label: "Refreshing reports from Google Sheets" });
 
   try {
     const t = Date.now();
@@ -1026,6 +1053,8 @@ async function refreshReports({ force = false } = {}) {
       ui.refreshReportsBtn.disabled = false;
       ui.refreshReportsBtn.textContent = "Refresh Reports";
     }
+    updateRefreshButtonLabel();
+    setTopbarRefreshState({ isLoading: false });
   }
 }
 
@@ -1049,6 +1078,8 @@ function setActiveTab(tab) {
       refreshReports();
     }
   }
+
+  updateRefreshButtonLabel();
 }
 
 function normalizeProductKey(value) {
@@ -1580,14 +1611,14 @@ function wireEvents() {
     setActiveTab("reports");
   });
 
-  ui.homeButton?.addEventListener("click", showHome);
-
-  ui.topMenuRefresh?.addEventListener("click", () => {
-    refreshCatalog();
-    setHidden(ui.topMenuList, true);
+  ui.topbarHomeBtn?.addEventListener("click", () => showHome());
+  ui.refreshBtn?.addEventListener("click", () => {
+    if (state.activeTab === "reports") {
+      refreshReports({ force: true });
+      return;
+    }
+    refreshCatalog({ force: true });
   });
-
-  ui.refreshBtn?.addEventListener("click", () => refreshCatalog());
   ui.orderTabBtn?.addEventListener("click", () => setActiveTab("order"));
   ui.reportsTabBtn?.addEventListener("click", () => setActiveTab("reports"));
 
@@ -1689,6 +1720,7 @@ function init() {
     showOrderApp();
     setActiveTab("reports");
   }
+  updateRefreshButtonLabel();
 
   // If cache is stale or empty, try a background refresh
   const hasCatalog = state.products.length > 0;
