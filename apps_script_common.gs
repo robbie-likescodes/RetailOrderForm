@@ -8,9 +8,26 @@ const CONFIG = {
 };
 
 function jsonResponse(payload) {
-  return ContentService
+  const output = ContentService
     .createTextOutput(JSON.stringify(payload))
     .setMimeType(ContentService.MimeType.JSON);
+
+  return withCors_(output);
+}
+
+function doOptions() {
+  const output = ContentService.createTextOutput("")
+    .setMimeType(ContentService.MimeType.JSON);
+
+  return withCors_(output);
+}
+
+function withCors_(output) {
+  output.setHeader("Access-Control-Allow-Origin", "*");
+  output.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  output.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  output.setHeader("Access-Control-Max-Age", "3600");
+  return output;
 }
 
 function buildError_(message, code, details, requestId) {

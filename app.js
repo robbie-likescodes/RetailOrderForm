@@ -1409,6 +1409,11 @@ function wireEvents() {
 
   ui.homeButton?.addEventListener("click", showHome);
 
+  ui.topMenuRefresh?.addEventListener("click", () => {
+    refreshCatalog();
+    setHidden(ui.topMenuList, true);
+  });
+
   ui.refreshBtn?.addEventListener("click", () => refreshCatalog());
   ui.orderTabBtn?.addEventListener("click", () => setActiveTab("order"));
   ui.reportsTabBtn?.addEventListener("click", () => setActiveTab("reports"));
