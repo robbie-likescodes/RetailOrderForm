@@ -715,11 +715,14 @@ function renderCategories() {
     counts.set(p.category, (counts.get(p.category) || 0) + 1);
   });
 
+  const categoriesFromProducts = [...new Set(state.steps.map(p => p.category))];
   const orderedCategories = state.categories.length
     ? state.categories.map(c => c.category)
-    : [...new Set(state.steps.map(p => p.category))];
+    : categoriesFromProducts;
 
-  orderedCategories.forEach(category => {
+  let renderedCount = 0;
+  const renderCategoryCard = (category) => {
+    if (!category) return;
     const itemCount = counts.get(category) || 0;
     if (!itemCount && CONFIG.HIDE_EMPTY_CATEGORIES) return;
     const catRow = state.categories.find(c => c.category === category);
@@ -736,7 +739,14 @@ function renderCategories() {
       showItems();
     });
     ui.categoryList.appendChild(card);
-  });
+    renderedCount += 1;
+  };
+
+  orderedCategories.forEach(renderCategoryCard);
+
+  if (renderedCount === 0 && categoriesFromProducts.length) {
+    categoriesFromProducts.forEach(renderCategoryCard);
+  }
 
   renderSelectedSummary();
 }
