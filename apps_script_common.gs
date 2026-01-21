@@ -1,4 +1,7 @@
 const CONFIG = {
+  // Optional: set to a specific Google Sheet ID if running as a standalone script.
+  // Leave blank to use the container-bound spreadsheet.
+  spreadsheetId: "",
   sheets: {
     categories: "Categories",
     products: "Products",
@@ -65,7 +68,7 @@ function getFirstValue_(row, keys) {
 }
 
 function getSheetRows_(sheetName) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet_();
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
     throw new Error(`Missing sheet: ${sheetName}`);
@@ -81,6 +84,13 @@ function getSheetRows_(sheetName) {
       if (header) acc[header] = row[idx];
       return acc;
     }, {}));
+}
+
+function getSpreadsheet_() {
+  if (CONFIG.spreadsheetId) {
+    return SpreadsheetApp.openById(CONFIG.spreadsheetId);
+  }
+  return SpreadsheetApp.getActiveSpreadsheet();
 }
 
 function isRowActive_(row) {
