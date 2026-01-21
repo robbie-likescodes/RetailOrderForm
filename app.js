@@ -127,14 +127,8 @@ const ui = {
   reportStatus: $("reportStatus"),
   reportTopStore: $("reportTopStore"),
   refreshReportsBtn: $("refreshReportsBtn"),
-  reportProduct: $("reportProduct"),
-  reportStore: $("reportStore"),
-  reportStart: $("reportStart"),
-  reportEnd: $("reportEnd"),
-  reportSort: $("reportSort"),
-  reportStoreBody: $("reportStoreBody"),
-  reportStoreEmpty: $("reportStoreEmpty"),
   compareScope: $("compareScope"),
+  compareStores: $("compareStores"),
   compareProduct: $("compareProduct"),
   compareCategory: $("compareCategory"),
   compareProductField: $("compareProductField"),
@@ -172,16 +166,12 @@ const state = {
   categoryIndex: new Map(), // category -> {start, end}
   orders: [],
   reports: {
-    product: "",
-    store: "all",
-    reportStart: "",
-    reportEnd: "",
+    compareStores: [],
     compareProduct: "",
     compareCategory: "",
     compareScope: "product",
     compareStart: "",
     compareEnd: "",
-    sort: "qty-desc",
     compareSort: "qty-desc",
   },
   activeTab: "order",
@@ -1263,6 +1253,26 @@ function buildSelectOptions(select, options, selectedValue) {
   }
 }
 
+function buildMultiSelectOptions(select, options, selectedValues = []) {
+  if (!select) return;
+  const selectedSet = new Set(selectedValues);
+  select.innerHTML = "";
+  options.forEach((option) => {
+    const el = document.createElement("option");
+    el.value = option.value;
+    el.textContent = option.label;
+    if (selectedSet.has(option.value)) {
+      el.selected = true;
+    }
+    select.appendChild(el);
+  });
+}
+
+function getSelectedValues(select) {
+  if (!select) return [];
+  return Array.from(select.selectedOptions || []).map((option) => option.value);
+}
+
 function getStoreList() {
   const stores = new Set(CONFIG.STORES || []);
   state.orders.forEach((order) => {
@@ -1310,16 +1320,15 @@ function getCategoryMap() {
 
 function updateReportOptions() {
   const stores = getStoreList();
-  buildSelectOptions(
-    ui.reportStore,
-    [{ value: "all", label: "All stores" }, ...stores.map((store) => ({ value: store, label: store }))],
-    state.reports.store
+  buildMultiSelectOptions(
+    ui.compareStores,
+    stores.map((store) => ({ value: store, label: store })),
+    state.reports.compareStores
   );
 
   const productMap = getProductMap();
   const productOptions = [{ value: "", label: "Select a product" }];
   productMap.forEach((label, value) => productOptions.push({ value, label }));
-  buildSelectOptions(ui.reportProduct, productOptions, state.reports.product);
   buildSelectOptions(ui.compareProduct, productOptions, state.reports.compareProduct);
 
   const categoryMap = getCategoryMap();
@@ -1337,26 +1346,14 @@ function updateReportOptions() {
 }
 
 function syncReportFiltersFromInputs() {
-  if (!ui.reportProduct) return;
-  state.reports.product = normalizeProductKey(ui.reportProduct.value);
-  state.reports.store = ui.reportStore?.value || "all";
-  state.reports.reportStart = ui.reportStart?.value || "";
-  state.reports.reportEnd = ui.reportEnd?.value || "";
+  if (!ui.compareProduct) return;
+  state.reports.compareStores = getSelectedValues(ui.compareStores);
   state.reports.compareProduct = normalizeProductKey(ui.compareProduct?.value);
   state.reports.compareCategory = ui.compareCategory?.value || "";
   state.reports.compareScope = ui.compareScope?.value || state.reports.compareScope;
   state.reports.compareStart = ui.compareStart?.value || "";
   state.reports.compareEnd = ui.compareEnd?.value || "";
-  state.reports.sort = ui.reportSort?.value || state.reports.sort;
   state.reports.compareSort = ui.compareSort?.value || state.reports.compareSort;
-}
-
-function passesDateFilters(orderDate, filters) {
-  if (!orderDate) return false;
-  const rangeStart = parseDateValue(filters.reportStart);
-  const rangeEnd = parseDateValue(filters.reportEnd);
-  if (rangeStart || rangeEnd) return isWithinRange(orderDate, rangeStart, rangeEnd);
-  return true;
 }
 
 function itemMatchesProduct(item, productKey) {
@@ -1400,55 +1397,11 @@ function renderReports() {
   syncReportFiltersFromInputs();
   updateCompareScopeUI();
 
-  const { product, store, reportStart, reportEnd, sort } = state.reports;
-  const storeTotals = new Map();
-  const stores = getStoreList();
-  stores.forEach((storeName) => storeTotals.set(storeName, 0));
-
-  const showProductTotals = !!product;
-  if (showProductTotals) {
-    state.orders.forEach((order) => {
-      if (!order || !order.requested_date) return;
-      const orderDate = parseDateValue(order.requested_date);
-      if (!passesDateFilters(orderDate, { reportStart, reportEnd })) return;
-      if (store !== "all" && order.store !== store) return;
-
-      (order.items || []).forEach((item) => {
-        if (!itemMatchesProduct(item, product)) return;
-        const current = storeTotals.get(order.store) || 0;
-        const qty = Number(item.qty) || 0;
-        storeTotals.set(order.store, current + qty);
-      });
-    });
-  }
-
-  if (ui.reportStoreBody) {
-    ui.reportStoreBody.innerHTML = "";
-    if (showProductTotals && stores.length) {
-      const rows = sortStores(
-        store === "all" ? stores : stores.filter((name) => name === store),
-        storeTotals,
-        sort
-      );
-      rows.forEach((storeName) => {
-        const row = document.createElement("tr");
-        const nameCell = document.createElement("td");
-        nameCell.textContent = storeName;
-        const qtyCell = document.createElement("td");
-        qtyCell.textContent = String(storeTotals.get(storeName) || 0);
-        row.appendChild(nameCell);
-        row.appendChild(qtyCell);
-        ui.reportStoreBody.appendChild(row);
-      });
-    }
-  }
-
-  setHidden(ui.reportStoreEmpty, showProductTotals && stores.length);
-  if (ui.reportStoreEmpty && !showProductTotals) {
-    ui.reportStoreEmpty.textContent = "Select a product and timeframe to see totals.";
-  } else if (ui.reportStoreEmpty && !stores.length) {
-    ui.reportStoreEmpty.textContent = "No order history yet. Submit orders to populate reports.";
-  }
+  const allStores = getStoreList();
+  const selectedStores = state.reports.compareStores || [];
+  const stores = selectedStores.length
+    ? allStores.filter((storeName) => selectedStores.includes(storeName))
+    : allStores;
 
   const compareProduct = state.reports.compareProduct;
   const compareCategory = state.reports.compareCategory;
@@ -1607,7 +1560,9 @@ function renderReports() {
 
   setHidden(ui.compareEmpty, compareValid && stores.length);
   if (ui.compareEmpty && !stores.length) {
-    ui.compareEmpty.textContent = "No order history yet. Submit orders to populate reports.";
+    ui.compareEmpty.textContent = selectedStores.length
+      ? "No matching stores selected. Update the store filter to compare results."
+      : "No order history yet. Submit orders to populate reports.";
   }
   if (ui.reportTopStore && !compareValid) {
     ui.reportTopStore.textContent = "—";
@@ -1821,12 +1776,8 @@ function wireEvents() {
   ui.notes?.addEventListener("input", markDirty);
 
   const rerenderReports = () => renderReports();
-  ui.reportProduct?.addEventListener("change", rerenderReports);
-  ui.reportStore?.addEventListener("change", rerenderReports);
-  ui.reportStart?.addEventListener("change", rerenderReports);
-  ui.reportEnd?.addEventListener("change", rerenderReports);
-  ui.reportSort?.addEventListener("change", rerenderReports);
   ui.compareScope?.addEventListener("change", rerenderReports);
+  ui.compareStores?.addEventListener("change", rerenderReports);
   ui.compareProduct?.addEventListener("change", rerenderReports);
   ui.compareCategory?.addEventListener("change", rerenderReports);
   ui.compareStart?.addEventListener("change", rerenderReports);
