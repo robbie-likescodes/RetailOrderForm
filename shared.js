@@ -1,5 +1,5 @@
 (() => {
-  const DEFAULT_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxWO08xL5EBcBWK_258HjaiQau__zUD47z0Y367c1Wbgz6mZDa4JGxgi3eRIQUitNG5/exec";
+  const DEFAULT_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby3lBkgwmUXZFy3WkD_wAD4PcrNo4qQKh9QUT17dpq8BVf8rzsBS_RL3F0cDnehj6VR/exec";
   const DEFAULT_TIMEOUT_MS = 15000;
   const RETRY_DELAY_MS = 700;
   const SIMPLE_POST_CONTENT_TYPE = "text/plain;charset=utf-8";
@@ -401,6 +401,25 @@
     });
   }
 
+  async function updateOrderItemStatus({ orderId, productIndex, productName, status }) {
+    const safeOrderId = String(orderId || "").trim();
+    const safeStatus = String(status || "").trim();
+    const safeProductName = String(productName || "").trim();
+    const safeProductIndex = Number(productIndex || 0);
+    if (!safeOrderId) throw new Error("Missing order id for item status update.");
+    if (!safeStatus) throw new Error("Missing status for item status update.");
+    return apiFetch("updateOrderItemStatus", {
+      method: "POST",
+      cacheBust: false,
+      body: {
+        order_id: safeOrderId,
+        product_index: Number.isFinite(safeProductIndex) && safeProductIndex > 0 ? safeProductIndex : "",
+        product_name: safeProductName,
+        status: safeStatus,
+      },
+    });
+  }
+
   function enrichItemsWithCatalog(items, catalog) {
     if (!Array.isArray(items) || !catalog || !Array.isArray(catalog.products)) return items || [];
     const productMap = new Map();
@@ -477,6 +496,7 @@
     refreshCategoriesAndProducts,
     refreshOrders,
     updateOrderStatus,
+    updateOrderItemStatus,
     loadCatalog,
     saveCatalog,
     loadOrders,
