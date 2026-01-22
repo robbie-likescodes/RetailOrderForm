@@ -333,7 +333,8 @@ function buildItemsSummary_(items) {
 }
 
 function sendOfficeEmail_(payload, orderId, itemsSummary) {
-  if (!CONFIG.officeEmail) return "";
+  const recipients = getOrderNotificationEmails_();
+  if (!recipients.length) return "No notification emails configured.";
   try {
     const subject = `New Retail Order ${orderId}`;
     const bodyLines = [
@@ -348,7 +349,7 @@ function sendOfficeEmail_(payload, orderId, itemsSummary) {
       "Raw Items JSON:",
       JSON.stringify(payload.items || [], null, 2),
     ];
-    MailApp.sendEmail(CONFIG.officeEmail, subject, bodyLines.join("\n"));
+    MailApp.sendEmail(recipients.join(","), subject, bodyLines.join("\n"));
     return "";
   } catch (err) {
     Logger.log("sendOfficeEmail error: %s", err);
