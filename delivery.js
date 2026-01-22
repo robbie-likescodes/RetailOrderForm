@@ -128,7 +128,7 @@ function renderOrders() {
   if (!ui.deliveryOrders) return;
   const today = todayDateValue();
   const openIds = new Set(
-    Array.from(ui.deliveryOrders.querySelectorAll("details[open]")
+    Array.from(ui.deliveryOrders.querySelectorAll("details[open]"))
       .map((el) => el.getAttribute("data-order-id"))
   );
 
@@ -294,6 +294,9 @@ function init() {
   AppClient.bindRefreshButtons({
     orders: (button) => refreshOrders(button),
   });
+  if (ui.refreshBtn) {
+    ui.refreshBtn.addEventListener("click", () => refreshOrders(ui.refreshBtn));
+  }
   AppClient.watchNetworkStatus((online) => {
     if (!online) {
       AppClient.showBanner("You are offline. Showing cached delivery orders.", "warning");
