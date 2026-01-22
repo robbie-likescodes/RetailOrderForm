@@ -126,6 +126,7 @@ function normalizeOrderRows(rows) {
   return rows.map((row) => {
     const normalized = normalizeRowKeys(row);
     const items = Array.isArray(row.items) ? row.items : normalized.items;
+    const timestampValue = normalized.timestamp || row.timestamp || normalized.created_at || row.created_at || "";
     return {
       id: normalized.id || normalized.order_id || row.id || row.order_id || "",
       store: normalized.store || row.store || "",
@@ -134,6 +135,8 @@ function normalizeOrderRows(rows) {
       notes: normalized.notes || row.notes || "",
       items: Array.isArray(items) ? normalizeItemRows(items) : [],
       created_at: normalized.created_at || row.created_at || "",
+      timestamp: timestampValue,
+      created_date: normalizeDateValue(timestampValue),
     };
   });
 }
@@ -229,7 +232,8 @@ function renderOrders() {
     .map(normalizeOrder);
 
   const todaysOrders = normalizedOrders
-    .filter((order) => order.requested_date === today);
+    .filter((order) => (order.requested_date === today || order.created_date === today))
+    .sort((a, b) => String(a.store || "").localeCompare(String(b.store || "")));
 
   if (todaysOrders.length === 0) {
     const empty = document.createElement("div");
@@ -252,7 +256,7 @@ function renderOrders() {
     const summaryLeft = document.createElement("div");
     summaryLeft.innerHTML = `
       <div class="deliveryOrder__title">${escapeHtml(order.store || "Unknown Store")}</div>
-      <div class="deliveryOrder__meta">${escapeHtml(order.placed_by || "Unknown")} • ${escapeHtml(order.requested_date || today)}</div>
+      <div class="deliveryOrder__meta">${escapeHtml(order.placed_by || "Unknown")} • ${escapeHtml(order.requested_date || order.created_date || today)}</div>
     `;
 
     const summaryRight = document.createElement("div");
