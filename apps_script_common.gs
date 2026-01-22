@@ -9,6 +9,12 @@ const CONFIG = {
     // Token auth intentionally disabled for "anyone with link" mode.
     sharedToken: "",
   },
+  cors: {
+    allowOrigin: "*",
+    allowMethods: "GET,POST,OPTIONS",
+    allowHeaders: "Content-Type, Cache-Control, Pragma",
+    maxAgeSeconds: "3600",
+  },
   sheets: {
     categories: "Categories",
     products: "Products",
@@ -38,10 +44,12 @@ function doOptions() {
 }
 
 function withCors_(output) {
-  output.setHeader("Access-Control-Allow-Origin", "*");
-  output.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  output.setHeader("Access-Control-Allow-Headers", "Content-Type, Cache-Control, Pragma");
-  output.setHeader("Access-Control-Max-Age", "3600");
+  const cors = CONFIG.cors || {};
+  output.setHeader("Access-Control-Allow-Origin", cors.allowOrigin || "*");
+  output.setHeader("Access-Control-Allow-Methods", cors.allowMethods || "GET,POST,OPTIONS");
+  output.setHeader("Access-Control-Allow-Headers", cors.allowHeaders || "Content-Type, Cache-Control, Pragma");
+  output.setHeader("Access-Control-Max-Age", cors.maxAgeSeconds || "3600");
+  output.setHeader("Vary", "Origin");
   output.setHeader("Cache-Control", "no-store, max-age=0");
   output.setHeader("Pragma", "no-cache");
   return output;
