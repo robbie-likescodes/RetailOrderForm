@@ -135,8 +135,12 @@
         <div class="reports__filters reports__filters--compact">
           <label class="field field--stores">
             <span>Stores</span>
-            <select id="compareStores" class="select--multi" multiple size="4">
-            </select>
+            <div id="compareStores" class="multiselect" data-placeholder="Select stores">
+              <button type="button" class="multiselect__toggle" aria-haspopup="listbox" aria-expanded="false">
+                Select stores
+              </button>
+              <div class="multiselect__menu" role="listbox" aria-multiselectable="true"></div>
+            </div>
             <small class="field__help">Select one or more stores.</small>
           </label>
           <label class="field field--scope">
