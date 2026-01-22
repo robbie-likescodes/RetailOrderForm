@@ -1282,24 +1282,58 @@ function buildSelectOptions(select, options, selectedValue) {
   }
 }
 
-function buildMultiSelectOptions(select, options, selectedValues = []) {
-  if (!select) return;
+function updateMultiSelectToggle(container) {
+  const toggle = container?.querySelector(".multiselect__toggle");
+  if (!toggle) return;
+  const placeholder = container.dataset.placeholder || "Select";
+  const selected = getSelectedValues(container);
+  if (selected.length === 0) {
+    toggle.textContent = placeholder;
+    return;
+  }
+  if (selected.length <= 2) {
+    toggle.textContent = selected.join(", ");
+    return;
+  }
+  toggle.textContent = `${selected.length} stores selected`;
+}
+
+function setMultiSelectOpen(container, isOpen) {
+  if (!container) return;
+  const toggle = container.querySelector(".multiselect__toggle");
+  container.classList.toggle("is-open", isOpen);
+  if (toggle) toggle.setAttribute("aria-expanded", String(isOpen));
+}
+
+function buildMultiSelectDropdown(container, options, selectedValues = []) {
+  if (!container) return;
+  const menu = container.querySelector(".multiselect__menu");
+  if (!menu) return;
   const selectedSet = new Set(selectedValues);
-  select.innerHTML = "";
+  menu.innerHTML = "";
   options.forEach((option) => {
-    const el = document.createElement("option");
-    el.value = option.value;
-    el.textContent = option.label;
-    if (selectedSet.has(option.value)) {
-      el.selected = true;
-    }
-    select.appendChild(el);
+    const label = document.createElement("label");
+    label.className = "multiselect__option";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = option.value;
+    input.checked = selectedSet.has(option.value);
+    const text = document.createElement("span");
+    text.textContent = option.label;
+    label.appendChild(input);
+    label.appendChild(text);
+    menu.appendChild(label);
   });
+  updateMultiSelectToggle(container);
 }
 
 function getSelectedValues(select) {
   if (!select) return [];
-  return Array.from(select.selectedOptions || []).map((option) => option.value);
+  if (select instanceof HTMLSelectElement) {
+    return Array.from(select.selectedOptions || []).map((option) => option.value);
+  }
+  return Array.from(select.querySelectorAll("input[type=\"checkbox\"]:checked"))
+    .map((input) => input.value);
 }
 
 function getStoreList() {
@@ -1349,7 +1383,7 @@ function getCategoryMap() {
 
 function updateReportOptions() {
   const stores = getStoreList();
-  buildMultiSelectOptions(
+  buildMultiSelectDropdown(
     ui.compareStores,
     stores.map((store) => ({ value: store, label: store })),
     state.reports.compareStores
@@ -1806,7 +1840,21 @@ function wireEvents() {
 
   const rerenderReports = () => renderReports();
   ui.compareScope?.addEventListener("change", rerenderReports);
-  ui.compareStores?.addEventListener("change", rerenderReports);
+  ui.compareStores?.addEventListener("change", () => {
+    updateMultiSelectToggle(ui.compareStores);
+    rerenderReports();
+  });
+  ui.compareStores?.addEventListener("click", (event) => {
+    const toggle = event.target.closest(".multiselect__toggle");
+    if (!toggle || !ui.compareStores) return;
+    event.preventDefault();
+    setMultiSelectOpen(ui.compareStores, !ui.compareStores.classList.contains("is-open"));
+  });
+  document.addEventListener("click", (event) => {
+    if (!ui.compareStores) return;
+    if (ui.compareStores.contains(event.target)) return;
+    setMultiSelectOpen(ui.compareStores, false);
+  });
   ui.compareProduct?.addEventListener("change", rerenderReports);
   ui.compareCategory?.addEventListener("change", rerenderReports);
   ui.compareStart?.addEventListener("change", rerenderReports);
