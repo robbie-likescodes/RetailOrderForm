@@ -12,11 +12,27 @@ function doPost(e) {
     Logger.log("doPost request %s action=%s cid=%s", requestId, action, getCorrelationId_(e, payload));
     Logger.log("doPost parseJson ok requestId=%s", requestId);
 
+    if (action === "updateorderstatus") {
+      const tokenError = validateToken_(payload);
+      if (tokenError) {
+        Logger.log("doPost validateToken failed requestId=%s", requestId);
+        logOrderError_(requestId, "validateToken", tokenError.message, payload);
+        return jsonResponse(buildError_(
+          tokenError.message,
+          tokenError.code,
+          tokenError.details,
+          requestId
+        ));
+      }
+
+      return jsonResponse(updateOrderStatus_(payload, requestId));
+    }
+
     if (action !== "submitorder") {
       return jsonResponse(buildError_(
         `Unknown action: ${action}`,
         "UNKNOWN_ACTION",
-        { expected: ["submitOrder"] },
+        { expected: ["submitOrder", "updateOrderStatus"] },
         requestId
       ));
     }
@@ -122,6 +138,59 @@ function doPost(e) {
     logOrderError_(requestId, "unhandled", message, null, err);
     return jsonResponse(buildError_(message, errorCode, null, requestId));
   }
+}
+
+function updateOrderStatus_(payload, requestId) {
+  const orderId = String(payload.order_id || payload.orderId || "").trim();
+  const status = String(payload.status || "").trim();
+  if (!orderId) {
+    return buildError_("Missing order_id.", "MISSING_ORDER_ID", null, requestId);
+  }
+  if (!status) {
+    return buildError_("Missing status.", "MISSING_STATUS", null, requestId);
+  }
+
+  const allowed = ["Not Started", "Incomplete", "Complete"];
+  if (!allowed.includes(status)) {
+    return buildError_("Invalid status.", "INVALID_STATUS", { allowed }, requestId);
+  }
+
+  const sheet = getSpreadsheet_().getSheetByName(CONFIG.sheets.orders);
+  if (!sheet) {
+    return buildError_(`Missing sheet: ${CONFIG.sheets.orders}`, "MISSING_SHEET", null, requestId);
+  }
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return buildError_("Orders sheet is empty.", "NO_ORDERS", null, requestId);
+  }
+
+  const lastColumn = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0].map(normalizeHeader_);
+  const orderIdColumn = headers.indexOf("order_id") + 1;
+  const statusColumn = headers.indexOf("status") + 1;
+
+  if (!orderIdColumn || !statusColumn) {
+    return buildError_("Orders sheet missing required columns.", "MISSING_COLUMNS", {
+      required: ["order_id", "status"],
+    }, requestId);
+  }
+
+  const orderIds = sheet.getRange(2, orderIdColumn, lastRow - 1, 1).getValues();
+  let targetRow = -1;
+  for (var i = 0; i < orderIds.length; i += 1) {
+    if (String(orderIds[i][0] || "").trim() === orderId) {
+      targetRow = i + 2;
+      break;
+    }
+  }
+
+  if (targetRow < 0) {
+    return buildError_("Order not found.", "ORDER_NOT_FOUND", { order_id: orderId }, requestId);
+  }
+
+  sheet.getRange(targetRow, statusColumn).setValue(status);
+  return buildSuccess_({ order_id: orderId, status }, requestId);
 }
 
 function parseJson_(e) {

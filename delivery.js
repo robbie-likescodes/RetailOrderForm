@@ -5,6 +5,11 @@ const ui = {
 };
 
 const DELIVERY_STATE_KEY = "orderportal_delivery_state_v1";
+const ORDER_STATUS = {
+  NOT_STARTED: "Not Started",
+  INCOMPLETE: "Incomplete",
+  COMPLETE: "Complete",
+};
 
 let orders = [];
 let deliveryState = {};
@@ -63,12 +68,14 @@ function attachItemsToOrders(ordersList, itemsList) {
 
 function normalizeOrder(order) {
   const existingDelivery = deliveryState[order.id] || deliveryState[order.order_id] || {};
+  const hasItems = existingDelivery.items && Object.keys(existingDelivery.items).length > 0;
   return {
     ...order,
     id: order.id || order.order_id || orderIdFallback(order),
     delivery: {
-      status: existingDelivery.status || order?.delivery?.status || "pending",
+      status: existingDelivery.status || order?.delivery?.status || order?.status || ORDER_STATUS.NOT_STARTED,
       items: existingDelivery.items || order?.delivery?.items || {},
+      touched: existingDelivery.touched || hasItems,
     },
   };
 }
@@ -85,43 +92,55 @@ function getItemStatus(order, key) {
   return order.delivery.items?.[key] || "";
 }
 
-function setItemStatus(orderId, key, status) {
-  const next = deliveryState[orderId] || { status: "pending", items: {} };
+function deriveOrderStatus(order, itemsMap, fallbackStatus, touched) {
+  const totalItems = Array.isArray(order.items) ? order.items.length : 0;
+  if (!totalItems) return fallbackStatus || ORDER_STATUS.NOT_STARTED;
+  const checkedCount = order.items.reduce((count, item) => {
+    const status = itemsMap?.[itemKey(item)];
+    if (!status) return count;
+    if (status === "pulled" || status === "unavailable") return count + 1;
+    return count;
+  }, 0);
+
+  if (checkedCount === 0) {
+    if (!touched && fallbackStatus) return fallbackStatus;
+    return ORDER_STATUS.NOT_STARTED;
+  }
+  if (checkedCount === totalItems) return ORDER_STATUS.COMPLETE;
+  return ORDER_STATUS.INCOMPLETE;
+}
+
+async function pushOrderStatus(orderId, status) {
+  if (!AppClient?.updateOrderStatus) return;
+  try {
+    await AppClient.updateOrderStatus(orderId, status);
+  } catch (err) {
+    const message = err?.userMessage || err?.message || String(err);
+    AppClient.showToast?.(`Failed to sync status: ${message}`, "warning");
+  }
+}
+
+function setItemStatus(order, key, status) {
+  const orderId = order.id;
+  const next = deliveryState[orderId] || {
+    status: order?.status || order?.delivery?.status || ORDER_STATUS.NOT_STARTED,
+    items: {},
+    touched: false,
+  };
+  const previousStatus = next.status || ORDER_STATUS.NOT_STARTED;
   if (!status) {
     delete next.items[key];
   } else {
     next.items[key] = status;
   }
-  if (!isOrderCompleteByMap(next.items)) {
-    next.status = "pending";
-  }
+  next.touched = true;
+  const derivedStatus = deriveOrderStatus(order, next.items, previousStatus, next.touched);
+  next.status = derivedStatus;
   deliveryState[orderId] = next;
   saveDeliveryState();
-}
-
-function markReady(orderId) {
-  const next = deliveryState[orderId] || { status: "pending", items: {} };
-  next.status = "ready";
-  deliveryState[orderId] = next;
-  saveDeliveryState();
-}
-
-function isOrderCompleteByMap(itemsMap) {
-  return Object.values(itemsMap || {}).every((status) => status === "pulled" || status === "unavailable");
-}
-
-function isOrderComplete(order) {
-  return order.items.every((item) => {
-    const status = getItemStatus(order, itemKey(item));
-    return status === "pulled" || status === "unavailable";
-  });
-}
-
-function syncOrderStatus(order) {
-  if (order.delivery.status === "ready" && !isOrderComplete(order)) {
-    return { ...order, delivery: { ...order.delivery, status: "pending" } };
+  if (derivedStatus !== previousStatus) {
+    pushOrderStatus(orderId, derivedStatus);
   }
-  return order;
 }
 
 function renderOrders() {
@@ -135,8 +154,7 @@ function renderOrders() {
   ui.deliveryOrders.innerHTML = "";
 
   const normalizedOrders = orders
-    .map(normalizeOrder)
-    .map(syncOrderStatus);
+    .map(normalizeOrder);
 
   const todaysOrders = normalizedOrders
     .filter((order) => order.requested_date === today);
@@ -166,9 +184,23 @@ function renderOrders() {
     `;
 
     const summaryRight = document.createElement("div");
-    const ready = order.delivery.status === "ready";
-    summaryRight.className = ready ? "statusBadge" : "statusBadge statusBadge--pending";
-    summaryRight.textContent = ready ? "✓ Ready" : "In progress";
+    const derivedStatus = deriveOrderStatus(
+      order,
+      order.delivery.items,
+      order.delivery.status || order.status,
+      order.delivery.touched
+    );
+    if (derivedStatus !== order.delivery.status) {
+      deliveryState[order.id] = {
+        status: derivedStatus,
+        items: order.delivery.items,
+        touched: order.delivery.touched,
+      };
+      saveDeliveryState();
+    }
+    const isComplete = derivedStatus === ORDER_STATUS.COMPLETE;
+    summaryRight.className = isComplete ? "statusBadge" : "statusBadge statusBadge--pending";
+    summaryRight.textContent = derivedStatus;
 
     summary.appendChild(summaryLeft);
     summary.appendChild(summaryRight);
@@ -223,35 +255,20 @@ function renderOrders() {
       pulledInput.addEventListener("change", () => {
         const nextStatus = pulledInput.checked ? "pulled" : "";
         if (pulledInput.checked) unavailableInput.checked = false;
-        setItemStatus(order.id, key, nextStatus);
+        setItemStatus(order, key, nextStatus);
         renderOrders();
       });
 
       unavailableInput.addEventListener("change", () => {
         const nextStatus = unavailableInput.checked ? "unavailable" : "";
         if (unavailableInput.checked) pulledInput.checked = false;
-        setItemStatus(order.id, key, nextStatus);
+        setItemStatus(order, key, nextStatus);
         renderOrders();
       });
 
       itemList.appendChild(row);
     });
-
-    const footer = document.createElement("div");
-    footer.className = "deliveryFooter";
-
-    const readyBtn = document.createElement("button");
-    readyBtn.className = "btn btn--primary";
-    readyBtn.textContent = "Mark Ready";
-    readyBtn.disabled = !isOrderComplete(order);
-    readyBtn.addEventListener("click", () => {
-      markReady(order.id);
-      renderOrders();
-    });
-
-    footer.appendChild(readyBtn);
     details.appendChild(itemList);
-    details.appendChild(footer);
     ui.deliveryOrders.appendChild(details);
   });
 }

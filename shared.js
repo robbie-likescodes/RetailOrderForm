@@ -386,6 +386,21 @@
     return { ...ordersData, cachedAt: new Date().toISOString(), source: "network" };
   }
 
+  async function updateOrderStatus(orderId, status) {
+    const safeOrderId = String(orderId || "").trim();
+    const safeStatus = String(status || "").trim();
+    if (!safeOrderId) throw new Error("Missing order id for status update.");
+    if (!safeStatus) throw new Error("Missing status for status update.");
+    return apiFetch("updateOrderStatus", {
+      method: "POST",
+      cacheBust: false,
+      body: {
+        order_id: safeOrderId,
+        status: safeStatus,
+      },
+    });
+  }
+
   function enrichItemsWithCatalog(items, catalog) {
     if (!Array.isArray(items) || !catalog || !Array.isArray(catalog.products)) return items || [];
     const productMap = new Map();
@@ -461,6 +476,7 @@
     apiFetch,
     refreshCategoriesAndProducts,
     refreshOrders,
+    updateOrderStatus,
     loadCatalog,
     saveCatalog,
     loadOrders,

@@ -154,6 +154,7 @@ function doGet(e) {
           notes: String(row.notes || "").trim(),
           item_count: itemCount,
           total_qty: totalQty,
+          status: String(row.status || "").trim(),
         };
       });
 
