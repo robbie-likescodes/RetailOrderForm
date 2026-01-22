@@ -1054,9 +1054,21 @@ async function refreshCatalog({ force = false, background = false } = {}) {
   });
 
   try {
+    const previousUpdatedAt = state.lastCatalogIso;
     const catalog = await AppClient.refreshCategoriesAndProducts({ force });
+    const isUnchanged = Boolean(
+      catalog.updatedAt
+      && previousUpdatedAt
+      && catalog.updatedAt === previousUpdatedAt
+    );
     const { cats, prods } = updateUIAfterRefresh(catalog);
-    AppClient.showToast(`Loaded ${cats.length} categories and ${prods.length} products.`, "success");
+    if (!background) {
+      if (isUnchanged) {
+        AppClient.showToast("Fully Refreshed and Up to Date.", "info");
+      } else {
+        AppClient.showToast(`Loaded ${cats.length} categories and ${prods.length} products.`, "success");
+      }
+    }
   } catch (err) {
     const message = `Could not refresh catalog. ${err.userMessage || err.message || err}`;
     const requestUrl = err?.request?.url || AppClient.getBaseUrl();
