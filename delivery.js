@@ -260,6 +260,7 @@ function renderOrders() {
     `;
 
     const summaryRight = document.createElement("div");
+    summaryRight.className = "deliveryOrder__summaryRight";
     const derivedStatus = deriveOrderStatus(
       order,
       order.delivery.items,
@@ -275,8 +276,21 @@ function renderOrders() {
       saveDeliveryState();
     }
     const isComplete = derivedStatus === ORDER_STATUS.COMPLETE;
-    summaryRight.className = isComplete ? "statusBadge" : "statusBadge statusBadge--pending";
-    summaryRight.textContent = derivedStatus;
+    const statusBadge = document.createElement("div");
+    statusBadge.className = isComplete ? "statusBadge" : "statusBadge statusBadge--pending";
+    statusBadge.textContent = derivedStatus;
+
+    const toggleHint = document.createElement("div");
+    toggleHint.className = "deliveryOrder__toggle";
+    toggleHint.innerHTML = `
+      <span>Items</span>
+      <svg class="deliveryOrder__chevron" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <path d="M5 7.5l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+      </svg>
+    `;
+
+    summaryRight.appendChild(statusBadge);
+    summaryRight.appendChild(toggleHint);
 
     summary.appendChild(summaryLeft);
     summary.appendChild(summaryRight);

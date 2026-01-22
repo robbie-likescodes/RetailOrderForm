@@ -1042,6 +1042,31 @@ textarea:focus{
   margin-top: 4px;
 }
 
+.deliveryOrder__summaryRight{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.deliveryOrder__toggle{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.deliveryOrder__chevron{
+  width: 18px;
+  height: 18px;
+  transition: transform 0.2s ease;
+}
+
+.deliveryOrder[open] .deliveryOrder__chevron{
+  transform: rotate(180deg);
+}
+
 .itemList{
   display: grid;
   gap: 10px;
