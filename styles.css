@@ -215,6 +215,209 @@ body{
   box-shadow: var(--shadow-soft);
 }
 
+.historyStatus{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(226, 232, 240, 0.55);
+  margin-bottom: 14px;
+}
+
+.historyContent{
+  display: grid;
+  gap: 14px;
+}
+
+.historyStore{
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #ffffff;
+  box-shadow: var(--shadow-subtle);
+  overflow: hidden;
+}
+
+.historyStore summary{
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  font-weight: 700;
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.1), rgba(148, 163, 184, 0.1));
+}
+
+.historyStore summary::-webkit-details-marker{
+  display: none;
+}
+
+.historyStore summary::after{
+  content: "▾";
+  font-size: 16px;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+}
+
+.historyStore[open] summary::after{
+  transform: rotate(180deg);
+}
+
+.historyStore summary:focus-visible,
+.historyOrder summary:focus-visible{
+  outline: 3px solid rgba(79, 70, 229, 0.3);
+  outline-offset: 2px;
+}
+
+.historyCount{
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary-strong);
+  background: rgba(79, 70, 229, 0.14);
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(79, 70, 229, 0.2);
+}
+
+.historyOrders{
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px 16px;
+  background: #f8fafc;
+}
+
+.historyOrder{
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #ffffff;
+  box-shadow: var(--shadow-subtle);
+  overflow: hidden;
+}
+
+.historyOrder summary{
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+}
+
+.historyOrder summary::-webkit-details-marker{
+  display: none;
+}
+
+.historyOrder summary::after{
+  content: "▾";
+  font-size: 14px;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+}
+
+.historyOrder[open] summary{
+  background: rgba(79, 70, 229, 0.06);
+}
+
+.historyOrder[open] summary::after{
+  transform: rotate(180deg);
+}
+
+.historyOrder__title{
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.historyOrder__subtitle{
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.historyOrder__metaSummary{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary-strong);
+  background: rgba(79, 70, 229, 0.12);
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(79, 70, 229, 0.22);
+  flex-shrink: 0;
+}
+
+.historyOrder__body{
+  padding: 0 14px 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.historyOrder__metaGrid{
+  display: grid;
+  gap: 8px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.historyOrder__metaGrid strong{
+  color: var(--text);
+}
+
+.historyItems{
+  display: grid;
+  gap: 8px;
+}
+
+.historyItem{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #f8fafc;
+}
+
+.historyItem__name{
+  font-weight: 600;
+}
+
+.historyItem__meta{
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+.historyItem__qty{
+  min-width: 54px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--primary-strong);
+  background: rgba(79, 70, 229, 0.12);
+  border-radius: 10px;
+  padding: 6px 10px;
+  border: 1px solid rgba(79, 70, 229, 0.22);
+}
+
+.historyEmpty{
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px dashed rgba(148, 163, 184, 0.6);
+  background: rgba(226, 232, 240, 0.45);
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .card__header{
   display:flex;
   justify-content: space-between;
