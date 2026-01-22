@@ -14,11 +14,50 @@ function setText(el, txt) {
   el.textContent = txt;
 }
 
+function normalizeKey(key) {
+  return String(key || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function normalizeRowKeys(row) {
+  if (!row || typeof row !== "object") return {};
+  return Object.keys(row).reduce((acc, key) => {
+    const normalized = normalizeKey(key);
+    if (normalized) acc[normalized] = row[key];
+    return acc;
+  }, {});
+}
+
 function todayDateValue() {
   const today = new Date();
   const month = String(today.getMonth() + 1).padStart(2, "0");
   const day = String(today.getDate()).padStart(2, "0");
   return `${today.getFullYear()}-${month}-${day}`;
+}
+
+function normalizeDateValue(value) {
+  if (!value) return "";
+  const raw = String(value).trim();
+  const isoMatch = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoMatch) return isoMatch[1];
+  if (raw.includes("/")) {
+    const parts = raw.split("/");
+    if (parts.length === 3) {
+      const month = Number(parts[0]);
+      const day = Number(parts[1]);
+      let year = Number(parts[2]);
+      if (year < 100) year += 2000;
+      if (month && day && year) {
+        return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      }
+    }
+  }
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
 }
 
 function escapeHtml(s) {
@@ -47,7 +86,7 @@ function attachItemsToOrders(ordersList, itemsList) {
   if (!Array.isArray(ordersList)) return [];
   const itemsByOrder = new Map();
   (itemsList || []).forEach((item) => {
-    const orderId = String(item.order_id || "").trim();
+    const orderId = String(item.order_id || item.orderId || "").trim();
     if (!orderId) return;
     if (!itemsByOrder.has(orderId)) itemsByOrder.set(orderId, []);
     itemsByOrder.get(orderId).push(item);
@@ -58,6 +97,39 @@ function attachItemsToOrders(ordersList, itemsList) {
     const items = order.items || itemsByOrder.get(orderId) || [];
     const enrichedItems = AppClient.enrichItemsWithCatalog(items, AppClient.loadCatalog?.());
     return { ...order, items: enrichedItems };
+  });
+}
+
+function normalizeItemRows(items) {
+  if (!Array.isArray(items)) return [];
+  return items.map((item) => {
+    const normalized = normalizeRowKeys(item);
+    return {
+      sku: normalized.sku || item.sku || "",
+      item_no: normalized.item_no || item.item_no || "",
+      name: normalized.name || item.name || "",
+      unit: normalized.unit || item.unit || "",
+      pack_size: normalized.pack_size || item.pack_size || "",
+      qty: Number(normalized.qty ?? item.qty ?? 0) || 0,
+      order_id: normalized.order_id || item.order_id || item.orderId || "",
+    };
+  });
+}
+
+function normalizeOrderRows(rows) {
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row) => {
+    const normalized = normalizeRowKeys(row);
+    const items = Array.isArray(row.items) ? row.items : normalized.items;
+    return {
+      id: normalized.id || normalized.order_id || row.id || row.order_id || "",
+      store: normalized.store || row.store || "",
+      requested_date: normalizeDateValue(normalized.requested_date || row.requested_date || ""),
+      placed_by: normalized.placed_by || row.placed_by || "",
+      notes: normalized.notes || row.notes || "",
+      items: Array.isArray(items) ? normalizeItemRows(items) : [],
+      created_at: normalized.created_at || row.created_at || "",
+    };
   });
 }
 
@@ -257,10 +329,13 @@ function renderOrders() {
 }
 
 function applyOrdersPayload(payload) {
-  const merged = attachItemsToOrders(payload.orders || [], payload.items || []);
+  const normalizedOrders = normalizeOrderRows(payload.orders || []);
+  const normalizedItems = normalizeItemRows(payload.items || []);
+  const merged = attachItemsToOrders(normalizedOrders, normalizedItems);
   orders = merged.map((order) => ({
     ...order,
-    id: String(order.order_id || order.id || ""),
+    id: String(order.id || order.order_id || order.orderId || ""),
+    requested_date: normalizeDateValue(order.requested_date || ""),
   }));
   renderOrders();
 }
