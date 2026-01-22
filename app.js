@@ -461,7 +461,13 @@ function loadCache() {
 
   // Apply store lock if present
   if (STORE_LOCK) state.meta.store = STORE_LOCK;
-  if (!state.meta.requested_date) state.meta.requested_date = todayDateValue();
+  const today = todayDateValue();
+  const requestedDate = state.meta.requested_date;
+  const requestedDateParsed = parseDateValue(requestedDate);
+  const todayParsed = parseDateValue(today);
+  if (!requestedDate || !requestedDateParsed || (todayParsed && requestedDateParsed < todayParsed)) {
+    state.meta.requested_date = today;
+  }
 
   hydrateMetaInputs();
 }

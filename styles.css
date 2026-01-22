@@ -1046,6 +1046,24 @@ textarea:focus{
 }
 
 @media (max-width: 720px){
+  .topbar__row{
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .topbar__actions{
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+
+  #refreshBtn{
+    flex: 1 1 200px;
+    min-width: 0;
+    white-space: normal;
+    text-align: center;
+  }
+
   .reports__header{
     flex-direction: column;
     align-items: flex-start;
