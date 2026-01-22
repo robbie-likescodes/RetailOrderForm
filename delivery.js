@@ -74,6 +74,56 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 
+function parseDate(value) {
+  const date = value ? new Date(value) : null;
+  return date && !Number.isNaN(date.getTime()) ? date : null;
+}
+
+function formatDate(value) {
+  const date = parseDate(value);
+  return date ? date.toLocaleString() : "Unknown time";
+}
+
+function sortOrdersByDate(ordersList) {
+  return [...ordersList].sort((a, b) => {
+    const aTime = parseDate(a.created_at)?.getTime() || 0;
+    const bTime = parseDate(b.created_at)?.getTime() || 0;
+    if (bTime !== aTime) return bTime - aTime;
+    return String(a.order_id || a.id || "").localeCompare(String(b.order_id || b.id || ""), undefined, {
+      sensitivity: "base",
+    });
+  });
+}
+
+function sortStores(storeNames) {
+  return [...storeNames].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+}
+
+function sortItems(items) {
+  return [...items].sort((a, b) => {
+    const nameCompare = String(a.name || a.sku || "").localeCompare(
+      String(b.name || b.sku || ""),
+      undefined,
+      { sensitivity: "base" }
+    );
+    if (nameCompare !== 0) return nameCompare;
+    return String(a.sku || "").localeCompare(String(b.sku || ""), undefined, {
+      sensitivity: "base",
+    });
+  });
+}
+
+function groupItemsByOrder(items) {
+  const map = new Map();
+  (items || []).forEach((item) => {
+    const orderId = String(item.order_id || "").trim();
+    if (!orderId) return;
+    if (!map.has(orderId)) map.set(orderId, []);
+    map.get(orderId).push(item);
+  });
+  return map;
+}
+
 function loadDeliveryState() {
   try {
     const raw = JSON.parse(localStorage.getItem(DELIVERY_STATE_KEY) || "{}");
@@ -144,6 +194,7 @@ function normalizeOrderRows(rows) {
     const timestampValue = normalized.timestamp || row.timestamp || normalized.created_at || row.created_at || "";
     return {
       id: normalized.id || normalized.order_id || row.id || row.order_id || "",
+      order_id: normalized.order_id || row.order_id || normalized.id || row.id || "",
       store: normalized.store || row.store || "",
       requested_date: normalizeDateValue(normalized.requested_date || row.requested_date || ""),
       placed_by: normalized.placed_by || row.placed_by || "",
@@ -305,171 +356,200 @@ function renderOrders() {
   ui.deliveryOrders.innerHTML = "";
 
   const normalizedOrders = orders
-    .map(normalizeOrder);
+    .map(normalizeOrder)
+    .filter((order) => !order.requested_date || order.requested_date === today || order.created_date === today);
 
-  const todaysOrders = normalizedOrders
-    .filter((order) => (order.requested_date === today || order.created_date === today))
-    .sort((a, b) => String(a.store || "").localeCompare(String(b.store || "")));
-
-  if (todaysOrders.length === 0) {
+  if (!normalizedOrders.length) {
     const empty = document.createElement("div");
-    empty.className = "emptyState";
+    empty.className = "historyEmpty";
     empty.textContent = "No delivery orders found for today.";
     ui.deliveryOrders.appendChild(empty);
     return;
   }
 
-  todaysOrders.forEach((order) => {
-    const details = document.createElement("details");
-    details.className = "deliveryOrder";
-    details.setAttribute("data-order-id", order.id);
+  const itemsByOrder = groupItemsByOrder(
+    orders.flatMap((order) => Array.isArray(order.items) ? order.items : [])
+  );
 
-    if (openIds.has(order.id)) {
-      details.open = true;
-    }
+  const stores = new Map();
+  normalizedOrders.forEach((order) => {
+    const store = String(order.store || "Unknown Store").trim() || "Unknown Store";
+    if (!stores.has(store)) stores.set(store, []);
+    stores.get(store).push(order);
+  });
 
-    const summary = document.createElement("summary");
-    const summaryLeft = document.createElement("div");
-    summaryLeft.innerHTML = `
-      <div class="deliveryOrder__title">${escapeHtml(order.store || "Unknown Store")}</div>
-      <div class="deliveryOrder__meta">${escapeHtml(order.placed_by || "Unknown")} • ${escapeHtml(order.requested_date || order.created_date || today)}</div>
+  const sortedStores = sortStores(stores.keys());
+
+  sortedStores.forEach((storeName) => {
+    const storeOrders = sortOrdersByDate(stores.get(storeName));
+    const storeDetails = document.createElement("details");
+    storeDetails.className = "historyStore";
+    storeDetails.open = true;
+
+    const storeSummary = document.createElement("summary");
+    storeSummary.innerHTML = `
+      <span>${escapeHtml(storeName)}</span>
+      <span class="historyCount">${storeOrders.length} order${storeOrders.length === 1 ? "" : "s"}</span>
     `;
+    storeDetails.appendChild(storeSummary);
 
-    const summaryRight = document.createElement("div");
-    summaryRight.className = "deliveryOrder__summaryRight";
-    const derivedStatus = deriveOrderStatusFromItems(order, order.delivery.status || order.status);
-    if (derivedStatus !== order.delivery.status) {
-      deliveryState[order.id] = {
-        status: derivedStatus,
-        items: order.delivery.items,
-        touched: order.delivery.touched,
-      };
-      saveDeliveryState();
-    }
-    const isComplete = derivedStatus === ORDER_STATUS.COMPLETE;
-    const statusBadge = document.createElement("div");
-    statusBadge.className = isComplete ? "statusBadge" : "statusBadge statusBadge--pending";
-    statusBadge.textContent = derivedStatus;
+    const ordersWrap = document.createElement("div");
+    ordersWrap.className = "historyOrders";
 
-    const toggleHint = document.createElement("div");
-    toggleHint.className = "deliveryOrder__toggle";
-    toggleHint.innerHTML = `
-      <span>Items</span>
-      <svg class="deliveryOrder__chevron" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-        <path d="M5 7.5l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-      </svg>
-    `;
+    storeOrders.forEach((order) => {
+      const orderKey = String(order.id || order.order_id || "").trim();
+      const orderId = orderKey || "(no id)";
+      const createdAt = formatDate(order.created_at || order.requested_date || order.created_date);
+      const orderDetails = document.createElement("details");
+      orderDetails.className = "historyOrder";
+      orderDetails.setAttribute("data-order-id", orderKey);
 
-    summaryRight.appendChild(statusBadge);
-    summaryRight.appendChild(toggleHint);
-
-    summary.appendChild(summaryLeft);
-    summary.appendChild(summaryRight);
-    details.appendChild(summary);
-
-    const itemList = document.createElement("div");
-    itemList.className = "itemList";
-
-    order.items.filter(isVisibleLineItem).forEach((item) => {
-      const progress = getItemProgress(order, item);
-      const statusLabel = progress.touched
-        ? (progress.statusLabel || buildItemStatusLabel(progress.pulledQty, progress.orderedQty))
-        : "Not Started";
-
-      const row = document.createElement("div");
-      row.className = "itemRow";
-      if (progress.touched) {
-        if (progress.state === "pulled") row.classList.add("itemRow--pulled");
-        if (progress.state === "partial") row.classList.add("itemRow--partial");
-        if (progress.state === "unavailable") row.classList.add("itemRow--unavailable");
-        if (progress.state === "not_pulled") row.classList.add("itemRow--notPulled");
+      if (openIds.has(orderKey)) {
+        orderDetails.open = true;
       }
 
-      const controls = document.createElement("div");
-      controls.className = "itemRow__controls";
-
-      const selectLabel = document.createElement("label");
-      selectLabel.className = "itemRow__controlLabel";
-      selectLabel.textContent = "Pulled";
-
-      const select = document.createElement("select");
-      select.className = "itemRow__select";
-      select.setAttribute("aria-label", `Pulled quantity for ${item.name || "item"}`);
-
-      const maxQty = Math.max(Number(item.qty || 0) || 0, 0);
-      for (let i = 0; i <= maxQty; i += 1) {
-        const option = document.createElement("option");
-        option.value = String(i);
-        option.textContent = String(i);
-        if (i === progress.pulledQty) option.selected = true;
-        select.appendChild(option);
-      }
-
-      const quickActions = document.createElement("div");
-      quickActions.className = "itemRow__quickActions";
-
-      const pulledButton = document.createElement("button");
-      pulledButton.type = "button";
-      pulledButton.className = "itemRow__action itemRow__action--pulled";
-      pulledButton.textContent = "Pulled";
-
-      const notPulledButton = document.createElement("button");
-      notPulledButton.type = "button";
-      notPulledButton.className = "itemRow__action itemRow__action--notPulled";
-      notPulledButton.textContent = "Not Pulled";
-
-      const unavailableButton = document.createElement("button");
-      unavailableButton.type = "button";
-      unavailableButton.className = "itemRow__action itemRow__action--unavailable";
-      unavailableButton.textContent = "Unavailable";
-
-      quickActions.appendChild(pulledButton);
-      quickActions.appendChild(notPulledButton);
-      quickActions.appendChild(unavailableButton);
-
-      controls.appendChild(selectLabel);
-      controls.appendChild(select);
-      controls.appendChild(quickActions);
-
-      const label = document.createElement("div");
-      label.className = "itemRow__label";
-      label.innerHTML = `
-        <div>${escapeHtml(item.name || "Item")}</div>
-        <div class="itemRow__meta">${escapeHtml([item.item_no, item.unit, item.pack_size, `Ordered: ${item.qty}`].filter(Boolean).join(" • "))}</div>
-        <div class="itemRow__status">Status: ${escapeHtml(statusLabel)}</div>
+      const orderSummary = document.createElement("summary");
+      orderSummary.innerHTML = `
+        <div>
+          <div class="historyOrder__title">Order ${escapeHtml(orderId)}</div>
+          <div class="historyOrder__subtitle">${escapeHtml(createdAt)}</div>
+        </div>
       `;
 
-      row.appendChild(controls);
-      row.appendChild(label);
+      const derivedStatus = deriveOrderStatusFromItems(order, order.delivery.status || order.status);
+      if (derivedStatus !== order.delivery.status) {
+        deliveryState[order.id] = {
+          status: derivedStatus,
+          items: order.delivery.items,
+          touched: order.delivery.touched,
+        };
+        saveDeliveryState();
+      }
 
-      const applyStatus = (nextStatus, nextPulled) => {
-        select.value = String(nextPulled);
-        setItemStatus(order, item, nextStatus, nextPulled);
-        renderOrders();
-      };
+      const statusBadge = document.createElement("div");
+      statusBadge.className = "statusBadge";
+      statusBadge.textContent = derivedStatus;
 
-      select.addEventListener("change", () => {
-        const nextPulled = Number(select.value || 0);
-        const nextStatus = buildItemStatusLabel(nextPulled, progress.orderedQty);
-        applyStatus(nextStatus, nextPulled);
-      });
+      orderSummary.appendChild(statusBadge);
+      orderDetails.appendChild(orderSummary);
 
-      pulledButton.addEventListener("click", () => {
-        applyStatus("Pulled", progress.orderedQty);
-      });
+      const orderBody = document.createElement("div");
+      orderBody.className = "historyOrder__body";
+      orderBody.innerHTML = `
+        <div class="historyOrder__metaGrid">
+          <div><strong>Placed by:</strong> ${escapeHtml(order.placed_by || "—")}</div>
+          <div><strong>Requested date:</strong> ${escapeHtml(order.requested_date || "—")}</div>
+          <div><strong>Email:</strong> ${escapeHtml(order.email || "—")}</div>
+          <div><strong>Notes:</strong> ${escapeHtml(order.notes || "—")}</div>
+        </div>
+      `;
 
-      notPulledButton.addEventListener("click", () => {
-        applyStatus("Not Pulled", 0);
-      });
+      const items = sortItems(itemsByOrder.get(order.order_id || order.id) || []).filter(isVisibleLineItem);
+      const itemsWrap = document.createElement("div");
+      itemsWrap.className = "historyItems";
 
-      unavailableButton.addEventListener("click", () => {
-        applyStatus("Unavailable", 0);
-      });
+      if (!items.length) {
+        itemsWrap.innerHTML = `<div class="historyEmpty">No items recorded for this order.</div>`;
+      } else {
+        items.forEach((item) => {
+          const progress = getItemProgress(order, item);
+          const statusLabel = progress.touched
+            ? (progress.statusLabel || buildItemStatusLabel(progress.pulledQty, progress.orderedQty))
+            : "Not Started";
 
-      itemList.appendChild(row);
+          const itemRow = document.createElement("div");
+          itemRow.className = "historyItem deliveryItem";
+          if (progress.touched) {
+            if (progress.state === "pulled") itemRow.classList.add("deliveryItem--pulled");
+            if (progress.state === "partial") itemRow.classList.add("deliveryItem--partial");
+            if (progress.state === "unavailable") itemRow.classList.add("deliveryItem--unavailable");
+            if (progress.state === "not_pulled") itemRow.classList.add("deliveryItem--notPulled");
+          }
+
+          const itemInfo = document.createElement("div");
+          itemInfo.innerHTML = `
+            <div class="historyItem__name">${escapeHtml(item.name || item.sku || "Item")}</div>
+            <div class="historyItem__meta">${escapeHtml([item.item_no, item.unit, item.pack_size, `Ordered: ${item.qty}`].filter(Boolean).join(" • "))}</div>
+            <div class="deliveryItem__status">Status: ${escapeHtml(statusLabel)}</div>
+          `;
+
+          const itemControls = document.createElement("div");
+          itemControls.className = "deliveryItem__controls";
+
+          const select = document.createElement("select");
+          select.className = "itemRow__select";
+          select.setAttribute("aria-label", `Pulled quantity for ${item.name || "item"}`);
+          const maxQty = Math.max(Number(item.qty || 0) || 0, 0);
+          for (let i = 0; i <= maxQty; i += 1) {
+            const option = document.createElement("option");
+            option.value = String(i);
+            option.textContent = String(i);
+            if (i === progress.pulledQty) option.selected = true;
+            select.appendChild(option);
+          }
+
+          const quickActions = document.createElement("div");
+          quickActions.className = "itemRow__quickActions";
+
+          const pulledButton = document.createElement("button");
+          pulledButton.type = "button";
+          pulledButton.className = "itemRow__action itemRow__action--pulled";
+          pulledButton.textContent = "Pulled";
+
+          const notPulledButton = document.createElement("button");
+          notPulledButton.type = "button";
+          notPulledButton.className = "itemRow__action itemRow__action--notPulled";
+          notPulledButton.textContent = "Not Pulled";
+
+          const unavailableButton = document.createElement("button");
+          unavailableButton.type = "button";
+          unavailableButton.className = "itemRow__action itemRow__action--unavailable";
+          unavailableButton.textContent = "Unavailable";
+
+          quickActions.appendChild(pulledButton);
+          quickActions.appendChild(notPulledButton);
+          quickActions.appendChild(unavailableButton);
+
+          itemControls.appendChild(select);
+          itemControls.appendChild(quickActions);
+
+          const applyStatus = (nextStatus, nextPulled) => {
+            select.value = String(nextPulled);
+            setItemStatus(order, item, nextStatus, nextPulled);
+            renderOrders();
+          };
+
+          select.addEventListener("change", () => {
+            const nextPulled = Number(select.value || 0);
+            const nextStatus = buildItemStatusLabel(nextPulled, progress.orderedQty);
+            applyStatus(nextStatus, nextPulled);
+          });
+
+          pulledButton.addEventListener("click", () => {
+            applyStatus("Pulled", progress.orderedQty);
+          });
+
+          notPulledButton.addEventListener("click", () => {
+            applyStatus("Not Pulled", 0);
+          });
+
+          unavailableButton.addEventListener("click", () => {
+            applyStatus("Unavailable", 0);
+          });
+
+          itemRow.appendChild(itemInfo);
+          itemRow.appendChild(itemControls);
+          itemsWrap.appendChild(itemRow);
+        });
+      }
+
+      orderBody.appendChild(itemsWrap);
+      orderDetails.appendChild(orderBody);
+      ordersWrap.appendChild(orderDetails);
     });
-    details.appendChild(itemList);
-    ui.deliveryOrders.appendChild(details);
+
+    storeDetails.appendChild(ordersWrap);
+    ui.deliveryOrders.appendChild(storeDetails);
   });
 }
 

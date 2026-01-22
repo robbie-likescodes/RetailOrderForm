@@ -389,6 +389,36 @@ body{
   background: #f8fafc;
 }
 
+.deliveryItem{
+  align-items: flex-start;
+}
+
+.deliveryItem__status{
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.deliveryItem__controls{
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+.deliveryItem--pulled{
+  border-color: rgba(22, 163, 74, 0.35);
+}
+
+.deliveryItem--partial{
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.deliveryItem--unavailable,
+.deliveryItem--notPulled{
+  border-color: rgba(220, 38, 38, 0.35);
+}
+
 .historyItem__name{
   font-weight: 600;
 }
