@@ -680,6 +680,11 @@ textarea:focus{
   gap: var(--gap);
 }
 
+.items__footer{
+  display: flex;
+  justify-content: center;
+}
+
 .itemCard{
   border: 1px solid rgba(15, 23, 42, 0.1);
   border-radius: 18px;

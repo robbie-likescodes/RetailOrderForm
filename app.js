@@ -101,6 +101,7 @@ const ui = {
   categoryTitle: $("categoryTitle"),
   categoryMeta: $("categoryMeta"),
   backToCategories: $("backToCategories"),
+  backToCategoriesBottom: $("backToCategoriesBottom"),
 
   pillCategory: $("pillCategory"),
   productName: $("productName"),
@@ -1777,10 +1778,12 @@ function wireEvents() {
   ui.reportsTabBtn?.addEventListener("click", () => setActiveTab("reports"));
 
   ui.reviewBtn?.addEventListener("click", showReview);
-  ui.backToCategories?.addEventListener("click", () => {
+  const returnToCategories = () => {
     state.selectedCategory = "";
     showCatalog();
-  });
+  };
+  ui.backToCategories?.addEventListener("click", returnToCategories);
+  ui.backToCategoriesBottom?.addEventListener("click", returnToCategories);
 
   ui.editBtn?.addEventListener("click", backToWizard);
   ui.submitBtn?.addEventListener("click", submitOrder);
