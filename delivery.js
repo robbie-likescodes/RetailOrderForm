@@ -126,6 +126,7 @@ function normalizeOrderRows(rows) {
   return rows.map((row) => {
     const normalized = normalizeRowKeys(row);
     const items = Array.isArray(row.items) ? row.items : normalized.items;
+    const timestampValue = normalized.timestamp || row.timestamp || normalized.created_at || row.created_at || "";
     return {
       id: normalized.id || normalized.order_id || row.id || row.order_id || "",
       store: normalized.store || row.store || "",
@@ -134,7 +135,8 @@ function normalizeOrderRows(rows) {
       notes: normalized.notes || row.notes || "",
       items: Array.isArray(items) ? normalizeItemRows(items) : [],
       created_at: normalized.created_at || row.created_at || "",
-      created_date: normalizeDateValue(normalized.created_at || row.created_at || ""),
+      timestamp: timestampValue,
+      created_date: normalizeDateValue(timestampValue),
     };
   });
 }
@@ -229,9 +231,9 @@ function renderOrders() {
   const normalizedOrders = orders
     .map(normalizeOrder);
 
-  const todaysOrders = normalizedOrders.filter((order) => (
-    order.requested_date === today || order.created_date === today
-  ));
+  const todaysOrders = normalizedOrders
+    .filter((order) => (order.requested_date === today || order.created_date === today))
+    .sort((a, b) => String(a.store || "").localeCompare(String(b.store || "")));
 
   if (todaysOrders.length === 0) {
     const empty = document.createElement("div");
