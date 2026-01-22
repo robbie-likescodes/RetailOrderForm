@@ -949,7 +949,7 @@ function showReview() {
 
     const header = document.createElement("div");
     header.className = "reviewItem";
-    header.innerHTML = `<div class="reviewItem__name">${escapeHtml(catLabel)}</div>`;
+    header.innerHTML = `<div class="reviewItem__name reviewItem__category">${escapeHtml(catLabel)}</div>`;
     ui.reviewList.appendChild(header);
 
     items.forEach(p => {
