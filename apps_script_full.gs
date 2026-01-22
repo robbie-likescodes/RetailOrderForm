@@ -904,6 +904,15 @@ function buildItemsSummary_(items) {
     .join(", ");
 }
 
+function formatOrderItems_(items) {
+  if (!items || !items.length) return ["(No items provided)"];
+  return items.map(item => {
+    const name = item.name || item.sku || "Item";
+    const qty = item.qty || "";
+    return `- ${name}${qty ? ` x${qty}` : ""}`;
+  });
+}
+
 function sendOfficeEmail_(payload, orderId, itemsSummary) {
   const recipients = getOrderNotificationEmails_();
   if (!recipients.length) return "No notification emails configured.";
@@ -916,7 +925,10 @@ function sendOfficeEmail_(payload, orderId, itemsSummary) {
       `Requested date: ${payload.requested_date || ""}`,
       `Email: ${payload.email || ""}`,
       `Notes: ${payload.notes || ""}`,
-      `Items: ${itemsSummary || ""}`,
+      "Items:",
+      ...formatOrderItems_(payload.items || []),
+      "",
+      `Items summary: ${itemsSummary || ""}`,
       "",
       "Raw Items JSON:",
       JSON.stringify(payload.items || [], null, 2),
