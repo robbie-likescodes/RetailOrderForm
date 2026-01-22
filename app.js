@@ -1448,6 +1448,8 @@ function renderReports() {
   }
 
   const now = new Date();
+  const currentMonthStart = startOfMonth(now);
+  const currentMonthEnd = endOfMonth(now);
   const lastMonthAnchor = addMonths(now, -1);
   const lastMonthStart = startOfMonth(lastMonthAnchor);
   const lastMonthEnd = endOfMonth(lastMonthAnchor);
@@ -1457,6 +1459,22 @@ function renderReports() {
   const lastYearEnd = new Date(now.getFullYear() - 1, 11, 31);
   const customLabel = formatDateRange(compareStart, compareEnd) || "Set a custom range";
   const frames = [
+    {
+      key: "custom",
+      label: "Custom range",
+      rangeLabel: customLabel,
+      start: compareStart,
+      end: compareEnd,
+      active: !!(compareStart || compareEnd),
+    },
+    {
+      key: "currentMonth",
+      label: "Current month",
+      rangeLabel: formatDateRange(currentMonthStart, currentMonthEnd),
+      start: currentMonthStart,
+      end: currentMonthEnd,
+      active: true,
+    },
     {
       key: "lastMonth",
       label: "Last month",
@@ -1480,14 +1498,6 @@ function renderReports() {
       start: lastYearStart,
       end: lastYearEnd,
       active: true,
-    },
-    {
-      key: "custom",
-      label: "Custom range",
-      rangeLabel: customLabel,
-      start: compareStart,
-      end: compareEnd,
-      active: !!(compareStart || compareEnd),
     },
   ];
 
@@ -1528,7 +1538,9 @@ function renderReports() {
     });
   }
 
-  const primaryFrame = frames.find((frame) => frame.key === "custom" && frame.active) || frames[0];
+  const primaryFrame = frames.find((frame) => frame.key === "custom" && frame.active)
+    || frames.find((frame) => frame.active)
+    || frames[0];
   const sortTotals = new Map();
   stores.forEach((storeName) => {
     const totals = compareTotals.get(storeName);
