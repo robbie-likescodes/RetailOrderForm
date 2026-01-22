@@ -1,5 +1,5 @@
 (() => {
-  const DEFAULT_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxhR5XJwYz3DxqHFrYzzv8YLMreoCX-X_MT2-gySRwd4M_1texH-YyrsRk5ZxjchUXZ/exec";
+  const DEFAULT_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby9iaMVrwbjqdK3WWB5O7tDg2cyWe3TaW4Ax_eFPJ8Bdrkmce0S5xBMuAXAaLwl39d4/exec";
   const DEFAULT_TIMEOUT_MS = 15000;
   const RETRY_DELAY_MS = 700;
   const SIMPLE_POST_CONTENT_TYPE = "text/plain;charset=utf-8";
