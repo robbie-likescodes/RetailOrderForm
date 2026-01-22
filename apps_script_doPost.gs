@@ -221,10 +221,10 @@ function updateOrderItemStatus_(payload, requestId) {
     return buildError_("Missing status.", "MISSING_STATUS", null, requestId);
   }
 
-  const allowed = ["Unavailable", "Collected"];
+  const allowed = ["Unavailable", "Pulled", "Not Pulled"];
   const partialMatch = status.match(/^Partially Collected\s+\d+\s+of\s+\d+$/i);
   if (!allowed.includes(status) && !partialMatch) {
-    return buildError_("Invalid status.", "INVALID_STATUS", { allowed: ["Unavailable", "Collected", "Partially Collected X of Y"] }, requestId);
+    return buildError_("Invalid status.", "INVALID_STATUS", { allowed: ["Unavailable", "Pulled", "Not Pulled", "Partially Collected X of Y"] }, requestId);
   }
 
   const sheet = getSpreadsheet_().getSheetByName(CONFIG.sheets.orders);

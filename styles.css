@@ -1107,7 +1107,7 @@ textarea:focus{
   color: var(--muted);
 }
 
-.itemRow--collected .itemRow__label{
+.itemRow--pulled .itemRow__label{
   color: #16a34a;
 }
 
@@ -1116,6 +1116,10 @@ textarea:focus{
 }
 
 .itemRow--unavailable .itemRow__label{
+  color: #dc2626;
+}
+
+.itemRow--notPulled .itemRow__label{
   color: #dc2626;
 }
 
@@ -1140,6 +1144,39 @@ textarea:focus{
   font-size: 14px;
   color: #0f172a;
   background: #fff;
+}
+
+.itemRow__quickActions{
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.itemRow__action{
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  background: #fff;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.itemRow__action--pulled{
+  border-color: rgba(22, 163, 74, 0.6);
+  color: #16a34a;
+}
+
+.itemRow__action--notPulled{
+  border-color: rgba(220, 38, 38, 0.5);
+  color: #dc2626;
+}
+
+.itemRow__action--unavailable{
+  border-color: rgba(220, 38, 38, 0.7);
+  background: rgba(220, 38, 38, 0.08);
+  color: #b91c1c;
 }
 
 .deliveryFooter{

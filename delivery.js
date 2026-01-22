@@ -84,7 +84,7 @@ function loadDeliveryState() {
         const value = state.items[key];
         if (typeof value === "string") {
           if (value === "pulled") {
-            state.items[key] = { status: "Collected" };
+            state.items[key] = { status: "Pulled" };
           } else if (value === "unavailable") {
             state.items[key] = { status: "Unavailable", pulledQty: 0 };
           }
@@ -178,6 +178,10 @@ function itemKey(item) {
   return item.sku || item.item_no || item.name;
 }
 
+function isVisibleLineItem(item) {
+  return Boolean(String(item?.name || item?.sku || "").trim());
+}
+
 function getItemOverride(order, key) {
   const orderState = deliveryState[order.id] || deliveryState[order.order_id] || {};
   const itemState = orderState.items?.[key];
@@ -193,7 +197,8 @@ function parsePulledQtyFromStatus(status, orderedQty) {
   const normalized = String(status).trim().toLowerCase();
   if (!normalized) return null;
   if (normalized.startsWith("unavailable")) return 0;
-  if (normalized.startsWith("collected")) return orderedQty;
+  if (normalized.startsWith("not pulled")) return 0;
+  if (normalized.startsWith("pulled")) return orderedQty;
   const match = normalized.match(/partially collected\s+(\d+)\s+of\s+(\d+)/);
   if (match) {
     const pulled = Number(match[1]);
@@ -203,8 +208,8 @@ function parsePulledQtyFromStatus(status, orderedQty) {
 }
 
 function buildItemStatusLabel(pulledQty, orderedQty) {
-  if (pulledQty <= 0) return "Unavailable";
-  if (pulledQty >= orderedQty) return "Collected";
+  if (pulledQty <= 0) return "Not Pulled";
+  if (pulledQty >= orderedQty) return "Pulled";
   return `Partially Collected ${pulledQty} of ${orderedQty}`;
 }
 
@@ -216,23 +221,30 @@ function getItemProgress(order, item) {
   const statusLabel = override?.status || item.status || "";
   const parsedPulled = parsePulledQtyFromStatus(statusLabel, orderedQty);
   const pulledQty = Number.isFinite(overridePulled) ? overridePulled : (Number.isFinite(parsedPulled) ? parsedPulled : 0);
-  const state = pulledQty <= 0 ? "unavailable" : (pulledQty >= orderedQty ? "collected" : "partial");
+  const normalized = String(statusLabel || "").trim().toLowerCase();
+  let state = "not_pulled";
+  if (normalized.startsWith("unavailable")) state = "unavailable";
+  else if (normalized.startsWith("pulled")) state = "pulled";
+  else if (normalized.startsWith("partially collected")) state = "partial";
+  else if (normalized.startsWith("not pulled")) state = "not_pulled";
+  else if (pulledQty >= orderedQty && orderedQty > 0) state = "pulled";
+  else if (pulledQty > 0) state = "partial";
   const touched = Boolean(statusLabel) || Number.isFinite(overridePulled);
   return { orderedQty, pulledQty, state, statusLabel, touched };
 }
 
 function deriveOrderStatusFromItems(order, fallbackStatus) {
-  const items = Array.isArray(order.items) ? order.items : [];
+  const items = Array.isArray(order.items) ? order.items.filter(isVisibleLineItem) : [];
   if (!items.length) return fallbackStatus || ORDER_STATUS.NOT_STARTED;
-  let collectedCount = 0;
-  let touchedCount = 0;
+  let pulledCount = 0;
+  let progressedCount = 0;
   items.forEach((item) => {
     const progress = getItemProgress(order, item);
-    if (progress.touched) touchedCount += 1;
-    if (progress.state === "collected") collectedCount += 1;
+    if (["pulled", "partial"].includes(progress.state)) progressedCount += 1;
+    if (progress.state === "pulled") pulledCount += 1;
   });
-  if (collectedCount === items.length) return ORDER_STATUS.COMPLETE;
-  if (touchedCount === 0) return ORDER_STATUS.NOT_STARTED;
+  if (pulledCount === items.length) return ORDER_STATUS.COMPLETE;
+  if (progressedCount === 0) return ORDER_STATUS.NOT_STARTED;
   return ORDER_STATUS.IN_PROGRESS;
 }
 
@@ -358,7 +370,7 @@ function renderOrders() {
     const itemList = document.createElement("div");
     itemList.className = "itemList";
 
-    order.items.forEach((item) => {
+    order.items.filter(isVisibleLineItem).forEach((item) => {
       const progress = getItemProgress(order, item);
       const statusLabel = progress.touched
         ? (progress.statusLabel || buildItemStatusLabel(progress.pulledQty, progress.orderedQty))
@@ -367,9 +379,10 @@ function renderOrders() {
       const row = document.createElement("div");
       row.className = "itemRow";
       if (progress.touched) {
-        if (progress.state === "collected") row.classList.add("itemRow--collected");
+        if (progress.state === "pulled") row.classList.add("itemRow--pulled");
         if (progress.state === "partial") row.classList.add("itemRow--partial");
         if (progress.state === "unavailable") row.classList.add("itemRow--unavailable");
+        if (progress.state === "not_pulled") row.classList.add("itemRow--notPulled");
       }
 
       const controls = document.createElement("div");
@@ -392,25 +405,65 @@ function renderOrders() {
         select.appendChild(option);
       }
 
+      const quickActions = document.createElement("div");
+      quickActions.className = "itemRow__quickActions";
+
+      const pulledButton = document.createElement("button");
+      pulledButton.type = "button";
+      pulledButton.className = "itemRow__action itemRow__action--pulled";
+      pulledButton.textContent = "Pulled";
+
+      const notPulledButton = document.createElement("button");
+      notPulledButton.type = "button";
+      notPulledButton.className = "itemRow__action itemRow__action--notPulled";
+      notPulledButton.textContent = "Not Pulled";
+
+      const unavailableButton = document.createElement("button");
+      unavailableButton.type = "button";
+      unavailableButton.className = "itemRow__action itemRow__action--unavailable";
+      unavailableButton.textContent = "Unavailable";
+
+      quickActions.appendChild(pulledButton);
+      quickActions.appendChild(notPulledButton);
+      quickActions.appendChild(unavailableButton);
+
       controls.appendChild(selectLabel);
       controls.appendChild(select);
+      controls.appendChild(quickActions);
 
       const label = document.createElement("div");
       label.className = "itemRow__label";
       label.innerHTML = `
         <div>${escapeHtml(item.name || "Item")}</div>
         <div class="itemRow__meta">${escapeHtml([item.item_no, item.unit, item.pack_size, `Ordered: ${item.qty}`].filter(Boolean).join(" • "))}</div>
-        <div class="itemRow__status">${escapeHtml(statusLabel)}</div>
+        <div class="itemRow__status">Status: ${escapeHtml(statusLabel)}</div>
       `;
 
       row.appendChild(controls);
       row.appendChild(label);
 
+      const applyStatus = (nextStatus, nextPulled) => {
+        select.value = String(nextPulled);
+        setItemStatus(order, item, nextStatus, nextPulled);
+        renderOrders();
+      };
+
       select.addEventListener("change", () => {
         const nextPulled = Number(select.value || 0);
         const nextStatus = buildItemStatusLabel(nextPulled, progress.orderedQty);
-        setItemStatus(order, item, nextStatus, nextPulled);
-        renderOrders();
+        applyStatus(nextStatus, nextPulled);
+      });
+
+      pulledButton.addEventListener("click", () => {
+        applyStatus("Pulled", progress.orderedQty);
+      });
+
+      notPulledButton.addEventListener("click", () => {
+        applyStatus("Not Pulled", 0);
+      });
+
+      unavailableButton.addEventListener("click", () => {
+        applyStatus("Unavailable", 0);
       });
 
       itemList.appendChild(row);
