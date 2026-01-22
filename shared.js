@@ -401,6 +401,25 @@
     });
   }
 
+  async function updateOrderItemStatus({ orderId, productIndex, productName, status }) {
+    const safeOrderId = String(orderId || "").trim();
+    const safeStatus = String(status || "").trim();
+    const safeProductName = String(productName || "").trim();
+    const safeProductIndex = Number(productIndex || 0);
+    if (!safeOrderId) throw new Error("Missing order id for item status update.");
+    if (!safeStatus) throw new Error("Missing status for item status update.");
+    return apiFetch("updateOrderItemStatus", {
+      method: "POST",
+      cacheBust: false,
+      body: {
+        order_id: safeOrderId,
+        product_index: Number.isFinite(safeProductIndex) && safeProductIndex > 0 ? safeProductIndex : "",
+        product_name: safeProductName,
+        status: safeStatus,
+      },
+    });
+  }
+
   function enrichItemsWithCatalog(items, catalog) {
     if (!Array.isArray(items) || !catalog || !Array.isArray(catalog.products)) return items || [];
     const productMap = new Map();
@@ -477,6 +496,7 @@
     refreshCategoriesAndProducts,
     refreshOrders,
     updateOrderStatus,
+    updateOrderItemStatus,
     loadCatalog,
     saveCatalog,
     loadOrders,

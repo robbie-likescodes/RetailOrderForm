@@ -8,6 +8,7 @@
  *  GET  /exec?action=health
  *  POST /exec?action=submitOrder
  *  POST /exec?action=updateOrderStatus
+ *  POST /exec?action=updateOrderItemStatus
  */
 
 const CONFIG = {
@@ -110,7 +111,6 @@ function doGet(e) {
       }
 
       const itemsByOrder = new Map();
-      const items = [];
       itemRows
         .filter(row => row.order_id && (row.sku || row.name))
         .forEach(row => {
@@ -126,10 +126,26 @@ function doGet(e) {
             pack_size: String(row.pack_size || "").trim(),
             qty: row.qty || "",
           };
-          items.push(item);
           if (!itemsByOrder.has(orderId)) itemsByOrder.set(orderId, []);
           itemsByOrder.get(orderId).push(item);
         });
+
+      const orderItemsByOrder = new Map();
+      const items = [];
+      orderRows.forEach((row) => {
+        const orderId = String(row.order_id || "").trim();
+        if (!orderId) return;
+        const rowItems = extractOrderItems_(row);
+        const existingItems = itemsByOrder.get(orderId) || [];
+        const mergedItems = existingItems.length
+          ? mergeOrderItemsWithRow_(existingItems, rowItems)
+          : rowItems.map(item => ({ ...item, order_id: orderId }));
+        mergedItems.forEach(item => {
+          if (!item.order_id) item.order_id = orderId;
+        });
+        orderItemsByOrder.set(orderId, mergedItems);
+        items.push(...mergedItems);
+      });
 
       const orders = orderRows.map(row => {
         const orderId = String(row.order_id || "").trim();
@@ -150,24 +166,7 @@ function doGet(e) {
           "needed_by",
         ]) || "").trim();
 
-        if (!itemsByOrder.has(orderId)) {
-          const fallbackItems = collectOrderItemsFromRow_(row).map(item => ({
-            order_id: orderId,
-            item_no: String(item.item_no || "").trim(),
-            sku: String(item.sku || "").trim(),
-            name: String(item.name || item.sku || "Item").trim(),
-            category: String(item.category || "").trim(),
-            unit: String(item.unit || "").trim(),
-            pack_size: String(item.pack_size || "").trim(),
-            qty: item.qty || "",
-          }));
-          if (fallbackItems.length) {
-            itemsByOrder.set(orderId, fallbackItems);
-            items.push(...fallbackItems);
-          }
-        }
-
-        const orderItems = itemsByOrder.get(orderId) || [];
+        const orderItems = orderItemsByOrder.get(orderId) || [];
         const itemCount = row.item_count || orderItems.length || "";
         const totalQty = row.total_qty || orderItems.reduce((sum, item) => {
           const qty = Number(item.qty || 0);
@@ -244,11 +243,27 @@ function doPost(e) {
       return jsonResponse(updateOrderStatus_(payload, requestId));
     }
 
+    if (action === "updateorderitemstatus") {
+      const tokenError = validateToken_(payload);
+      if (tokenError) {
+        Logger.log("doPost validateToken failed requestId=%s", requestId);
+        logOrderError_(requestId, "validateToken", tokenError.message, payload);
+        return jsonResponse(buildError_(
+          tokenError.message,
+          tokenError.code,
+          tokenError.details,
+          requestId
+        ));
+      }
+
+      return jsonResponse(updateOrderItemStatus_(payload, requestId));
+    }
+
     if (action !== "submitorder") {
       return jsonResponse(buildError_(
         `Unknown action: ${action}`,
         "UNKNOWN_ACTION",
-        { expected: ["submitOrder", "updateOrderStatus"] },
+        { expected: ["submitOrder", "updateOrderStatus", "updateOrderItemStatus"] },
         requestId
       ));
     }
@@ -359,7 +374,7 @@ function updateOrderStatus_(payload, requestId) {
     return buildError_("Missing status.", "MISSING_STATUS", null, requestId);
   }
 
-  const allowed = ["Not Started", "Incomplete", "Complete"];
+  const allowed = ["Not Started", "In Progress", "Complete"];
   if (!allowed.includes(status)) {
     return buildError_("Invalid status.", "INVALID_STATUS", { allowed }, requestId);
   }
@@ -396,6 +411,88 @@ function updateOrderStatus_(payload, requestId) {
 
   if (targetRow < 0) {
     return buildError_("Order not found.", "ORDER_NOT_FOUND", { order_id: orderId }, requestId);
+  }
+
+  sheet.getRange(targetRow, statusColumn).setValue(status);
+  return buildSuccess_({ order_id: orderId, status }, requestId);
+}
+
+function updateOrderItemStatus_(payload, requestId) {
+  const orderId = String(payload.order_id || payload.orderId || "").trim();
+  const productIndex = Number(payload.product_index || payload.productIndex || 0);
+  const productName = String(payload.product_name || payload.productName || "").trim();
+  const status = String(payload.status || "").trim();
+  if (!orderId) {
+    return buildError_("Missing order_id.", "MISSING_ORDER_ID", null, requestId);
+  }
+  if (!status) {
+    return buildError_("Missing status.", "MISSING_STATUS", null, requestId);
+  }
+
+  const allowed = ["Unavailable", "Collected"];
+  const partialMatch = status.match(/^Partially Collected\s+\d+\s+of\s+\d+$/i);
+  if (!allowed.includes(status) && !partialMatch) {
+    return buildError_("Invalid status.", "INVALID_STATUS", { allowed: ["Unavailable", "Collected", "Partially Collected X of Y"] }, requestId);
+  }
+
+  const sheet = getSpreadsheet_().getSheetByName(CONFIG.sheets.orders);
+  if (!sheet) {
+    return buildError_(`Missing sheet: ${CONFIG.sheets.orders}`, "MISSING_SHEET", null, requestId);
+  }
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return buildError_("Orders sheet is empty.", "NO_ORDERS", null, requestId);
+  }
+
+  const lastColumn = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0].map(normalizeHeader_);
+  const orderIdColumn = headers.indexOf("order_id") + 1;
+  if (!orderIdColumn) {
+    return buildError_("Orders sheet missing required columns.", "MISSING_COLUMNS", {
+      required: ["order_id"],
+    }, requestId);
+  }
+
+  const orderIds = sheet.getRange(2, orderIdColumn, lastRow - 1, 1).getValues();
+  let targetRow = -1;
+  for (var i = 0; i < orderIds.length; i += 1) {
+    if (String(orderIds[i][0] || "").trim() === orderId) {
+      targetRow = i + 2;
+      break;
+    }
+  }
+
+  if (targetRow < 0) {
+    return buildError_("Order not found.", "ORDER_NOT_FOUND", { order_id: orderId }, requestId);
+  }
+
+  let statusColumn = 0;
+  if (Number.isFinite(productIndex) && productIndex > 0) {
+    statusColumn = headers.indexOf(`product_${productIndex}_status`) + 1;
+  }
+
+  if (!statusColumn && productName) {
+    for (var col = 0; col < headers.length; col += 1) {
+      const header = headers[col];
+      const match = header.match(/^product_(\d+)$/);
+      if (!match) continue;
+      const cellValue = String(sheet.getRange(targetRow, col + 1).getValue() || "").trim();
+      if (cellValue && cellValue.toLowerCase() === productName.toLowerCase()) {
+        const idx = Number(match[1]);
+        const candidate = headers.indexOf(`product_${idx}_status`) + 1;
+        if (candidate) {
+          statusColumn = candidate;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!statusColumn) {
+    return buildError_("Orders sheet missing product status column.", "MISSING_COLUMNS", {
+      required: ["product_#_status"],
+    }, requestId);
   }
 
   sheet.getRange(targetRow, statusColumn).setValue(status);
@@ -589,10 +686,11 @@ function extractOrderItems_(row) {
   productKeys.forEach((num) => {
     const name = String(row[`product_${num}`] || "").trim();
     const qty = row[`qty_${num}`];
+    const status = String(row[`product_${num}_status`] || "").trim();
     if (!name && (qty === "" || qty === null || typeof qty === "undefined")) {
       return;
     }
-    items.push({ name, qty });
+    items.push({ name, qty, status, product_index: num });
   });
 
   return items;
@@ -628,7 +726,41 @@ function collectOrderItemsFromRow_(row) {
   return extractOrderItems_(row).map(item => ({
     name: String(item.name || "Item").trim(),
     qty: item.qty || "",
+    status: String(item.status || "").trim(),
+    product_index: item.product_index || "",
   }));
+}
+
+function normalizeItemKey_(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function mergeOrderItemsWithRow_(items, rowItems) {
+  const pool = new Map();
+  (rowItems || []).forEach((item) => {
+    const key = normalizeItemKey_(item.name || item.sku);
+    if (!key) return;
+    if (!pool.has(key)) pool.set(key, []);
+    pool.get(key).push(item);
+  });
+
+  const merged = (items || []).map((item) => {
+    const key = normalizeItemKey_(item.name || item.sku);
+    const candidates = pool.get(key);
+    const rowItem = candidates && candidates.length ? candidates.shift() : null;
+    return {
+      ...item,
+      qty: item.qty || rowItem?.qty || "",
+      status: rowItem?.status || item.status || "",
+      product_index: rowItem?.product_index || item.product_index || "",
+    };
+  });
+
+  pool.forEach((list) => {
+    list.forEach((item) => merged.push(item));
+  });
+
+  return merged;
 }
 
 function parseJson_(e) {
@@ -722,7 +854,7 @@ function buildOrderHeaders_(maxProducts) {
   ];
 
   for (let i = 1; i <= maxProducts; i += 1) {
-    headers.push(`Product ${i}`, `Qty ${i}`);
+    headers.push(`Product ${i}`, `Qty ${i}`, `Product ${i} Status`);
   }
 
   return headers;
@@ -756,10 +888,12 @@ function validateOrdersHeader_(sheet, expectedHeaders) {
 }
 
 function buildProductCells_(items, maxProducts) {
-  const cells = new Array(maxProducts * 2).fill("");
+  const cells = new Array(maxProducts * 3).fill("");
   items.slice(0, maxProducts).forEach((item, index) => {
-    cells[index * 2] = item.name;
-    cells[index * 2 + 1] = item.qty;
+    const offset = index * 3;
+    cells[offset] = item.name;
+    cells[offset + 1] = item.qty;
+    cells[offset + 2] = "";
   });
   return cells;
 }
