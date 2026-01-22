@@ -134,6 +134,7 @@ function normalizeOrderRows(rows) {
       notes: normalized.notes || row.notes || "",
       items: Array.isArray(items) ? normalizeItemRows(items) : [],
       created_at: normalized.created_at || row.created_at || "",
+      created_date: normalizeDateValue(normalized.created_at || row.created_at || ""),
     };
   });
 }
@@ -228,8 +229,9 @@ function renderOrders() {
   const normalizedOrders = orders
     .map(normalizeOrder);
 
-  const todaysOrders = normalizedOrders
-    .filter((order) => order.requested_date === today);
+  const todaysOrders = normalizedOrders.filter((order) => (
+    order.requested_date === today || order.created_date === today
+  ));
 
   if (todaysOrders.length === 0) {
     const empty = document.createElement("div");
@@ -252,7 +254,7 @@ function renderOrders() {
     const summaryLeft = document.createElement("div");
     summaryLeft.innerHTML = `
       <div class="deliveryOrder__title">${escapeHtml(order.store || "Unknown Store")}</div>
-      <div class="deliveryOrder__meta">${escapeHtml(order.placed_by || "Unknown")} • ${escapeHtml(order.requested_date || today)}</div>
+      <div class="deliveryOrder__meta">${escapeHtml(order.placed_by || "Unknown")} • ${escapeHtml(order.requested_date || order.created_date || today)}</div>
     `;
 
     const summaryRight = document.createElement("div");
