@@ -21,6 +21,7 @@ const CONFIG = {
     orders: "Orders",
     orderItems: "OrderItems",
     orderErrors: "OrderErrors",
+    contacts: "Contacts",
   },
 };
 
@@ -156,6 +157,45 @@ function isRowActive_(row) {
   if (!normalized) return false;
   if (["false", "no", "n", "0", "inactive", "disabled"].includes(normalized)) return false;
   return ["true", "yes", "y", "1", "active", "enabled"].includes(normalized);
+}
+
+function getOrderNotificationEmails_() {
+  let rows = [];
+  try {
+    rows = getSheetRows_(CONFIG.sheets.contacts);
+  } catch (err) {
+    Logger.log("Contacts sheet unavailable: %s", err);
+    rows = [];
+  }
+
+  const emails = [];
+  rows
+    .filter(row => isRowActive_(row))
+    .forEach((row) => {
+      const email = String(getFirstValue_(row, [
+        "email",
+        "notification_email",
+        "order_email",
+        "contact_email",
+      ]) || "").trim();
+      if (email) emails.push(email);
+    });
+
+  if (!emails.length && CONFIG.officeEmail) {
+    emails.push(CONFIG.officeEmail);
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  emails.forEach((email) => {
+    const normalized = String(email || "").trim().toLowerCase();
+    if (!normalized || !normalized.includes("@")) return;
+    if (seen.has(normalized)) return;
+    seen.add(normalized);
+    deduped.push(email);
+  });
+
+  return deduped;
 }
 
 function extractOrderItems_(row) {
