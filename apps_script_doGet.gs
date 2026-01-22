@@ -80,7 +80,6 @@ function doGet(e) {
       }
 
       const itemsByOrder = new Map();
-      const items = [];
       itemRows
         .filter(row => row.order_id && (row.sku || row.name))
         .forEach(row => {
@@ -96,10 +95,26 @@ function doGet(e) {
             pack_size: String(row.pack_size || "").trim(),
             qty: row.qty || "",
           };
-          items.push(item);
           if (!itemsByOrder.has(orderId)) itemsByOrder.set(orderId, []);
           itemsByOrder.get(orderId).push(item);
         });
+
+      const orderItemsByOrder = new Map();
+      const items = [];
+      orderRows.forEach((row) => {
+        const orderId = String(row.order_id || "").trim();
+        if (!orderId) return;
+        const rowItems = extractOrderItems_(row);
+        const existingItems = itemsByOrder.get(orderId) || [];
+        const mergedItems = existingItems.length
+          ? mergeOrderItemsWithRow_(existingItems, rowItems)
+          : rowItems.map(item => ({ ...item, order_id: orderId }));
+        mergedItems.forEach(item => {
+          if (!item.order_id) item.order_id = orderId;
+        });
+        orderItemsByOrder.set(orderId, mergedItems);
+        items.push(...mergedItems);
+      });
 
       const orders = orderRows.map(row => {
         const orderId = String(row.order_id || "").trim();
@@ -120,24 +135,7 @@ function doGet(e) {
           "needed_by",
         ]) || "").trim();
 
-        if (!itemsByOrder.has(orderId)) {
-          const fallbackItems = collectOrderItemsFromRow_(row).map(item => ({
-            order_id: orderId,
-            item_no: String(item.item_no || "").trim(),
-            sku: String(item.sku || "").trim(),
-            name: String(item.name || item.sku || "Item").trim(),
-            category: String(item.category || "").trim(),
-            unit: String(item.unit || "").trim(),
-            pack_size: String(item.pack_size || "").trim(),
-            qty: item.qty || "",
-          }));
-          if (fallbackItems.length) {
-            itemsByOrder.set(orderId, fallbackItems);
-            items.push(...fallbackItems);
-          }
-        }
-
-        const orderItems = itemsByOrder.get(orderId) || [];
+        const orderItems = orderItemsByOrder.get(orderId) || [];
         const itemCount = row.item_count || orderItems.length || "";
         const totalQty = row.total_qty || orderItems.reduce((sum, item) => {
           const qty = Number(item.qty || 0);

@@ -1091,7 +1091,7 @@ textarea:focus{
 .itemRow__label{
   display: grid;
   gap: 4px;
-  color: #eab308;
+  color: #0f172a;
   font-weight: 600;
 }
 
@@ -1101,29 +1101,45 @@ textarea:focus{
   font-weight: 400;
 }
 
-.itemRow--pulled .itemRow__label{
+.itemRow__status{
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.itemRow--collected .itemRow__label{
   color: #16a34a;
+}
+
+.itemRow--partial .itemRow__label{
+  color: #f59e0b;
 }
 
 .itemRow--unavailable .itemRow__label{
   color: #dc2626;
-  text-decoration: line-through;
 }
 
-.itemRow__checks{
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.itemRow__checks label{
-  display: inline-flex;
-  align-items: center;
+.itemRow__controls{
+  display: grid;
   gap: 6px;
+  align-items: center;
+  justify-items: start;
+}
+
+.itemRow__controlLabel{
   font-size: 12px;
   color: var(--muted);
-  margin-top: 2px;
+  font-weight: 600;
+}
+
+.itemRow__select{
+  min-width: 72px;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  padding: 6px 10px;
+  font-size: 14px;
+  color: #0f172a;
+  background: #fff;
 }
 
 .deliveryFooter{

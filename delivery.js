@@ -7,7 +7,7 @@ const ui = {
 const DELIVERY_STATE_KEY = "orderportal_delivery_state_v1";
 const ORDER_STATUS = {
   NOT_STARTED: "Not Started",
-  INCOMPLETE: "Incomplete",
+  IN_PROGRESS: "In Progress",
   COMPLETE: "Complete",
 };
 
@@ -78,6 +78,19 @@ function loadDeliveryState() {
   try {
     const raw = JSON.parse(localStorage.getItem(DELIVERY_STATE_KEY) || "{}");
     deliveryState = raw && typeof raw === "object" ? raw : {};
+    Object.values(deliveryState).forEach((state) => {
+      if (!state || typeof state !== "object" || !state.items) return;
+      Object.keys(state.items).forEach((key) => {
+        const value = state.items[key];
+        if (typeof value === "string") {
+          if (value === "pulled") {
+            state.items[key] = { status: "Collected" };
+          } else if (value === "unavailable") {
+            state.items[key] = { status: "Unavailable", pulledQty: 0 };
+          }
+        }
+      });
+    });
   } catch (err) {
     deliveryState = {};
   }
@@ -116,6 +129,8 @@ function normalizeItemRows(items) {
       unit: normalized.unit || item.unit || "",
       pack_size: normalized.pack_size || item.pack_size || "",
       qty: Number(normalized.qty ?? item.qty ?? 0) || 0,
+      status: normalized.status || item.status || "",
+      product_index: Number(normalized.product_index ?? item.product_index ?? 0) || 0,
       order_id: normalized.order_id || item.order_id || item.orderId || "",
     };
   });
@@ -163,26 +178,62 @@ function itemKey(item) {
   return item.sku || item.item_no || item.name;
 }
 
-function getItemStatus(order, key) {
-  return order.delivery.items?.[key] || "";
+function getItemOverride(order, key) {
+  const orderState = deliveryState[order.id] || deliveryState[order.order_id] || {};
+  const itemState = orderState.items?.[key];
+  if (!itemState) return null;
+  if (typeof itemState === "string") {
+    return { status: itemState };
+  }
+  return itemState;
 }
 
-function deriveOrderStatus(order, itemsMap, fallbackStatus, touched) {
-  const totalItems = Array.isArray(order.items) ? order.items.length : 0;
-  if (!totalItems) return fallbackStatus || ORDER_STATUS.NOT_STARTED;
-  const checkedCount = order.items.reduce((count, item) => {
-    const status = itemsMap?.[itemKey(item)];
-    if (!status) return count;
-    if (status === "pulled" || status === "unavailable") return count + 1;
-    return count;
-  }, 0);
-
-  if (checkedCount === 0) {
-    if (!touched && fallbackStatus) return fallbackStatus;
-    return ORDER_STATUS.NOT_STARTED;
+function parsePulledQtyFromStatus(status, orderedQty) {
+  if (!status) return null;
+  const normalized = String(status).trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.startsWith("unavailable")) return 0;
+  if (normalized.startsWith("collected")) return orderedQty;
+  const match = normalized.match(/partially collected\s+(\d+)\s+of\s+(\d+)/);
+  if (match) {
+    const pulled = Number(match[1]);
+    if (Number.isFinite(pulled)) return pulled;
   }
-  if (checkedCount === totalItems) return ORDER_STATUS.COMPLETE;
-  return ORDER_STATUS.INCOMPLETE;
+  return null;
+}
+
+function buildItemStatusLabel(pulledQty, orderedQty) {
+  if (pulledQty <= 0) return "Unavailable";
+  if (pulledQty >= orderedQty) return "Collected";
+  return `Partially Collected ${pulledQty} of ${orderedQty}`;
+}
+
+function getItemProgress(order, item) {
+  const orderedQty = Number(item.qty || 0) || 0;
+  const key = itemKey(item);
+  const override = getItemOverride(order, key);
+  const overridePulled = override?.pulledQty;
+  const statusLabel = override?.status || item.status || "";
+  const parsedPulled = parsePulledQtyFromStatus(statusLabel, orderedQty);
+  const pulledQty = Number.isFinite(overridePulled) ? overridePulled : (Number.isFinite(parsedPulled) ? parsedPulled : 0);
+  const state = pulledQty <= 0 ? "unavailable" : (pulledQty >= orderedQty ? "collected" : "partial");
+  const touched = Boolean(statusLabel) || Number.isFinite(overridePulled);
+  return { orderedQty, pulledQty, state, statusLabel, touched };
+}
+
+function deriveOrderStatusFromItems(order, fallbackStatus) {
+  const items = Array.isArray(order.items) ? order.items : [];
+  if (!items.length) return fallbackStatus || ORDER_STATUS.NOT_STARTED;
+  let collectedCount = 0;
+  let touchedCount = 0;
+  items.forEach((item) => {
+    const progress = getItemProgress(order, item);
+    if (progress.touched) touchedCount += 1;
+    if (progress.state === "collected") collectedCount += 1;
+  });
+  if (collectedCount === items.length) return ORDER_STATUS.COMPLETE;
+  if (touchedCount === 0) return ORDER_STATUS.NOT_STARTED;
+  return ORDER_STATUS.IN_PROGRESS;
 }
 
 async function pushOrderStatus(orderId, status) {
@@ -195,7 +246,22 @@ async function pushOrderStatus(orderId, status) {
   }
 }
 
-function setItemStatus(order, key, status) {
+async function pushItemStatus(orderId, item, status) {
+  if (!AppClient?.updateOrderItemStatus) return;
+  try {
+    await AppClient.updateOrderItemStatus({
+      orderId,
+      productIndex: item.product_index || item.productIndex || "",
+      productName: item.name || "",
+      status,
+    });
+  } catch (err) {
+    const message = err?.userMessage || err?.message || String(err);
+    AppClient.showToast?.(`Failed to sync item status: ${message}`, "warning");
+  }
+}
+
+function setItemStatus(order, item, status, pulledQty) {
   const orderId = order.id;
   const next = deliveryState[orderId] || {
     status: order?.status || order?.delivery?.status || ORDER_STATUS.NOT_STARTED,
@@ -203,19 +269,17 @@ function setItemStatus(order, key, status) {
     touched: false,
   };
   const previousStatus = next.status || ORDER_STATUS.NOT_STARTED;
-  if (!status) {
-    delete next.items[key];
-  } else {
-    next.items[key] = status;
-  }
+  const key = itemKey(item);
+  next.items[key] = { status, pulledQty };
   next.touched = true;
-  const derivedStatus = deriveOrderStatus(order, next.items, previousStatus, next.touched);
+  const derivedStatus = deriveOrderStatusFromItems(order, previousStatus);
   next.status = derivedStatus;
   deliveryState[orderId] = next;
   saveDeliveryState();
   if (derivedStatus !== previousStatus) {
     pushOrderStatus(orderId, derivedStatus);
   }
+  pushItemStatus(orderId, item, status);
 }
 
 function renderOrders() {
@@ -261,12 +325,7 @@ function renderOrders() {
 
     const summaryRight = document.createElement("div");
     summaryRight.className = "deliveryOrder__summaryRight";
-    const derivedStatus = deriveOrderStatus(
-      order,
-      order.delivery.items,
-      order.delivery.status || order.status,
-      order.delivery.touched
-    );
+    const derivedStatus = deriveOrderStatusFromItems(order, order.delivery.status || order.status);
     if (derivedStatus !== order.delivery.status) {
       deliveryState[order.id] = {
         status: derivedStatus,
@@ -300,59 +359,57 @@ function renderOrders() {
     itemList.className = "itemList";
 
     order.items.forEach((item) => {
-      const key = itemKey(item);
-      const status = getItemStatus(order, key);
+      const progress = getItemProgress(order, item);
+      const statusLabel = progress.touched
+        ? (progress.statusLabel || buildItemStatusLabel(progress.pulledQty, progress.orderedQty))
+        : "Not Started";
 
       const row = document.createElement("div");
       row.className = "itemRow";
-      if (status === "pulled") row.classList.add("itemRow--pulled");
-      if (status === "unavailable") row.classList.add("itemRow--unavailable");
+      if (progress.touched) {
+        if (progress.state === "collected") row.classList.add("itemRow--collected");
+        if (progress.state === "partial") row.classList.add("itemRow--partial");
+        if (progress.state === "unavailable") row.classList.add("itemRow--unavailable");
+      }
 
-      const checks = document.createElement("div");
-      checks.className = "itemRow__checks";
+      const controls = document.createElement("div");
+      controls.className = "itemRow__controls";
 
-      const pulledId = `${order.id}-${key}-pulled`;
-      const unavailableId = `${order.id}-${key}-unavailable`;
+      const selectLabel = document.createElement("label");
+      selectLabel.className = "itemRow__controlLabel";
+      selectLabel.textContent = "Pulled";
 
-      const pulledLabel = document.createElement("label");
-      pulledLabel.innerHTML = `
-        <input type="checkbox" id="${escapeHtml(pulledId)}" ${status === "pulled" ? "checked" : ""} />
-        Pulled
-      `;
+      const select = document.createElement("select");
+      select.className = "itemRow__select";
+      select.setAttribute("aria-label", `Pulled quantity for ${item.name || "item"}`);
 
-      const unavailableLabel = document.createElement("label");
-      unavailableLabel.innerHTML = `
-        <input type="checkbox" id="${escapeHtml(unavailableId)}" ${status === "unavailable" ? "checked" : ""} />
-        Unavailable
-      `;
+      const maxQty = Math.max(Number(item.qty || 0) || 0, 0);
+      for (let i = 0; i <= maxQty; i += 1) {
+        const option = document.createElement("option");
+        option.value = String(i);
+        option.textContent = String(i);
+        if (i === progress.pulledQty) option.selected = true;
+        select.appendChild(option);
+      }
 
-      checks.appendChild(pulledLabel);
-      checks.appendChild(unavailableLabel);
+      controls.appendChild(selectLabel);
+      controls.appendChild(select);
 
       const label = document.createElement("div");
       label.className = "itemRow__label";
       label.innerHTML = `
         <div>${escapeHtml(item.name || "Item")}</div>
-        <div class="itemRow__meta">${escapeHtml([item.item_no, item.unit, item.pack_size, `Qty: ${item.qty}`].filter(Boolean).join(" • "))}</div>
+        <div class="itemRow__meta">${escapeHtml([item.item_no, item.unit, item.pack_size, `Ordered: ${item.qty}`].filter(Boolean).join(" • "))}</div>
+        <div class="itemRow__status">${escapeHtml(statusLabel)}</div>
       `;
 
-      row.appendChild(checks);
+      row.appendChild(controls);
       row.appendChild(label);
 
-      const pulledInput = pulledLabel.querySelector("input");
-      const unavailableInput = unavailableLabel.querySelector("input");
-
-      pulledInput.addEventListener("change", () => {
-        const nextStatus = pulledInput.checked ? "pulled" : "";
-        if (pulledInput.checked) unavailableInput.checked = false;
-        setItemStatus(order, key, nextStatus);
-        renderOrders();
-      });
-
-      unavailableInput.addEventListener("change", () => {
-        const nextStatus = unavailableInput.checked ? "unavailable" : "";
-        if (unavailableInput.checked) pulledInput.checked = false;
-        setItemStatus(order, key, nextStatus);
+      select.addEventListener("change", () => {
+        const nextPulled = Number(select.value || 0);
+        const nextStatus = buildItemStatusLabel(nextPulled, progress.orderedQty);
+        setItemStatus(order, item, nextStatus, nextPulled);
         renderOrders();
       });
 
