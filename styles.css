@@ -190,12 +190,13 @@ body{
 
 .reports__filters{
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 12px;
 }
 
 .reports__filters--compact{
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  align-items: end;
 }
 
 .reports__hint{
@@ -305,6 +306,11 @@ body{
 .field{ display:grid; gap: 8px; }
 .field{ min-width: 0; }
 .field span{ font-size: 13px; color: var(--muted); text-transform: none; letter-spacing: 0.01em; }
+.field__help{
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: -2px;
+}
 
 input, select, textarea{
   width: 100%;
@@ -315,6 +321,21 @@ input, select, textarea{
   background: var(--card-strong);
   color: var(--text);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+select.select--multi{
+  min-height: 140px;
+  padding-right: 36px;
+  border-color: rgba(79, 70, 229, 0.25);
+  background: linear-gradient(180deg, rgba(79, 70, 229, 0.08), rgba(79, 70, 229, 0.02));
+}
+
+select.select--multi option{
+  padding: 6px 8px;
+}
+
+input[type="datetime-local"]{
+  min-width: 0;
 }
 
 textarea{ resize: vertical; }
@@ -852,6 +873,23 @@ textarea:focus{
 
   .tableWrap{
     overflow-x: auto;
+  }
+}
+
+@media (min-width: 900px){
+  .reports__filters--compact{
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: 16px;
+  }
+
+  .reports__filters--compact .field--stores,
+  .reports__filters--compact .field--scope,
+  .reports__filters--compact .field--product,
+  .reports__filters--compact .field--category,
+  .reports__filters--compact .field--start,
+  .reports__filters--compact .field--end,
+  .reports__filters--compact .field--sort{
+    grid-column: span 4;
   }
 }
 

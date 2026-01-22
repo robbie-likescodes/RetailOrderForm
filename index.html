@@ -133,39 +133,40 @@
         <h3>Side-by-side store comparison</h3>
         <p class="muted reports__hint">Compare stores across quick timeframes (last month, last quarter, last year) plus a custom range.</p>
         <div class="reports__filters reports__filters--compact">
-          <label class="field">
+          <label class="field field--stores">
             <span>Stores</span>
-            <select id="compareStores" multiple>
+            <select id="compareStores" class="select--multi" multiple size="4">
             </select>
+            <small class="field__help">Select one or more stores.</small>
           </label>
-          <label class="field">
+          <label class="field field--scope">
             <span>Compare by</span>
             <select id="compareScope">
               <option value="product">Product</option>
               <option value="category">Category</option>
             </select>
           </label>
-          <label class="field" id="compareProductField">
+          <label class="field field--product" id="compareProductField">
             <span>Product</span>
             <select id="compareProduct">
               <option value="">Select a product</option>
             </select>
           </label>
-          <label class="field" id="compareCategoryField" hidden>
+          <label class="field field--category" id="compareCategoryField" hidden>
             <span>Category</span>
             <select id="compareCategory">
               <option value="">Select a category</option>
             </select>
           </label>
-          <label class="field">
+          <label class="field field--start">
             <span>Start date &amp; time</span>
             <input id="compareStart" type="datetime-local" />
           </label>
-          <label class="field">
+          <label class="field field--end">
             <span>End date &amp; time</span>
             <input id="compareEnd" type="datetime-local" />
           </label>
-          <label class="field">
+          <label class="field field--sort">
             <span>Sort</span>
             <select id="compareSort">
               <option value="qty-desc">Qty (high to low)</option>
