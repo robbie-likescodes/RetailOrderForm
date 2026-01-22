@@ -9,6 +9,12 @@ const CONFIG = {
     // Token auth intentionally disabled for "anyone with link" mode.
     sharedToken: "",
   },
+  cors: {
+    allowOrigin: "*",
+    allowMethods: "GET,POST,OPTIONS",
+    allowHeaders: "Content-Type, Cache-Control, Pragma",
+    maxAgeSeconds: "3600",
+  },
   sheets: {
     categories: "Categories",
     products: "Products",
@@ -38,13 +44,20 @@ function doOptions() {
 }
 
 function withCors_(output) {
-  output.setHeader("Access-Control-Allow-Origin", "*");
-  output.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  output.setHeader("Access-Control-Allow-Headers", "Content-Type, Cache-Control, Pragma");
-  output.setHeader("Access-Control-Max-Age", "3600");
-  output.setHeader("Cache-Control", "no-store, max-age=0");
-  output.setHeader("Pragma", "no-cache");
+  const cors = CONFIG.cors || {};
+  setHeaderSafe_(output, "Access-Control-Allow-Origin", cors.allowOrigin || "*");
+  setHeaderSafe_(output, "Access-Control-Allow-Methods", cors.allowMethods || "GET,POST,OPTIONS");
+  setHeaderSafe_(output, "Access-Control-Allow-Headers", cors.allowHeaders || "Content-Type, Cache-Control, Pragma");
+  setHeaderSafe_(output, "Access-Control-Max-Age", cors.maxAgeSeconds || "3600");
+  setHeaderSafe_(output, "Vary", "Origin");
+  setHeaderSafe_(output, "Cache-Control", "no-store, max-age=0");
+  setHeaderSafe_(output, "Pragma", "no-cache");
   return output;
+}
+
+function setHeaderSafe_(output, name, value) {
+  if (!output || typeof output.setHeader !== "function") return;
+  output.setHeader(name, value);
 }
 
 function buildError_(message, code, details, requestId) {
