@@ -1023,6 +1023,18 @@ textarea:focus{
   color: var(--primary);
 }
 
+.btn--drivers{
+  background: #f97316;
+  border-color: #f97316;
+  color: #fff;
+  box-shadow: 0 10px 18px rgba(249, 115, 22, 0.28);
+}
+
+.btn--drivers:hover{
+  background: #ea6a0f;
+  border-color: #ea6a0f;
+}
+
 .btn--tab{
   height: 40px;
   font-size: 14px;
