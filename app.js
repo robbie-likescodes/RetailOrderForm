@@ -12,7 +12,7 @@
  * - Basic input validation and error surfaces
  *
  * Required HTML element IDs expected (matches index.html):
- * lastUpdated, refreshBtn, store, requestedDate, placedBy, email, notes,
+ * lastUpdated, refreshBtn, store, requestedDate, placedBy, notes,
  * catalog, items, categoryList, itemList, selectedSummary, itemsSummary,
  * categoryTitle, categoryMeta, backToCategories, reviewBtn, errorBox,
  * review, reviewList, editBtn, submitBtn, submitError, submitSuccess
@@ -83,7 +83,6 @@ const ui = {
   store: $("store"),
   requestedDate: $("requestedDate"),
   placedBy: $("placedBy"),
-  email: $("email"),
   notes: $("notes"),
   orderMeta: $("orderMeta"),
 
@@ -159,7 +158,6 @@ const state = {
     store: "",
     requested_date: "",
     placed_by: "",
-    email: "",
     notes: "",
   },
   dirty: false,     // true if anything changed since last submit/refresh
@@ -457,7 +455,6 @@ function loadCache() {
     store: state.meta.store || "",
     requested_date: state.meta.requested_date || "",
     placed_by: state.meta.placed_by || "",
-    email: state.meta.email || "",
     notes: state.meta.notes || "",
   };
 
@@ -584,7 +581,6 @@ function hydrateMetaInputs() {
   if (ui.store) ui.store.value = state.meta.store || "";
   if (ui.requestedDate) ui.requestedDate.value = state.meta.requested_date || "";
   if (ui.placedBy) ui.placedBy.value = state.meta.placed_by || "";
-  if (ui.email) ui.email.value = state.meta.email || "";
   if (ui.notes) ui.notes.value = state.meta.notes || "";
 
   // Optional store lock
@@ -598,7 +594,6 @@ function syncMetaFromInputs() {
   if (ui.store) state.meta.store = ui.store.value.trim();
   if (ui.requestedDate) state.meta.requested_date = ui.requestedDate.value;
   if (ui.placedBy) state.meta.placed_by = ui.placedBy.value.trim();
-  if (ui.email) state.meta.email = ui.email.value.trim();
   if (ui.notes) state.meta.notes = ui.notes.value.trim();
   saveCache();
 }
@@ -1698,7 +1693,6 @@ function validateMeta() {
   if (!state.meta.placed_by) return "Placed by is required.";
 
   // Light validation
-  if (state.meta.email && !state.meta.email.includes("@")) return "Email looks invalid.";
 
   return "";
 }
@@ -1741,7 +1735,6 @@ async function submitOrder() {
     store: state.meta.store,
     placed_by: state.meta.placed_by,
     timestamp: nowIso(),
-    email: state.meta.email,
     requested_date: state.meta.requested_date,
     notes: state.meta.notes,
     items,
@@ -1877,7 +1870,6 @@ function wireEvents() {
   ui.store?.addEventListener("change", markDirty);
   ui.requestedDate?.addEventListener("change", markDirty);
   ui.placedBy?.addEventListener("input", markDirty);
-  ui.email?.addEventListener("input", markDirty);
   ui.notes?.addEventListener("input", markDirty);
 
   ui.compareScope?.addEventListener("change", updateCompareScopeUI);
