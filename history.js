@@ -21,6 +21,7 @@ const state = {
   catalog: null,
   ordersUpdatedAt: "",
   deliveryState: {},
+  qbMissingEls: new Map(),
   filter: {
     start: null,
     end: null,
@@ -126,6 +127,7 @@ function normalizeItem(item) {
     sku: normalized.sku || item.sku || "",
     item_no: normalized.item_no || item.item_no || "",
     name: normalized.name || item.name || "",
+    qb_list: normalized.qb_list || item.qb_list || "",
   };
 }
 
@@ -204,6 +206,76 @@ function sortItems(items) {
   });
 }
 
+function downloadIifFile(content, filename) {
+  const blob = new Blob([content], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function updateMissingMappingUI(orderId, missingItems) {
+  const element = state.qbMissingEls.get(orderId);
+  if (!element) return;
+  if (!missingItems || !missingItems.length) {
+    element.hidden = true;
+    element.textContent = "";
+    return;
+  }
+  element.hidden = false;
+  element.textContent = `Missing QB Mapping: ${missingItems.join(", ")}`;
+}
+
+async function exportOrderToIIF(orderId) {
+  const safeOrderId = String(orderId || "").trim();
+  const order = state.orders.find(
+    (entry) => String(entry.order_id || "").trim() === safeOrderId
+  );
+  console.log("[History] QuickBooks export selected order", { orderId: safeOrderId, order });
+
+  if (!order) {
+    showError("Unable to export. Order not found.");
+    AppClient.showToast("QuickBooks export failed. Order not found.", "error");
+    return;
+  }
+
+  showError("");
+
+  try {
+    const response = await AppClient.apiFetch("exportOrderIif", {
+      params: { order_id: safeOrderId },
+      cacheBust: true,
+    });
+    const iifText = response.iif_text || "";
+    const missingItems = Array.isArray(response.missing_items) ? response.missing_items : [];
+    console.log("[History] QuickBooks export line items", response.items || []);
+    console.log("[History] QuickBooks export missing QB List items", missingItems);
+    updateMissingMappingUI(safeOrderId, missingItems);
+    if (missingItems.length) {
+      AppClient.showToast("QuickBooks export generated with missing QB mappings.", "warning");
+    } else {
+      AppClient.showToast("QuickBooks IIF downloaded.", "success");
+    }
+
+    if (!iifText) {
+      showError("QuickBooks export failed. Empty export content.");
+      AppClient.showToast("QuickBooks export failed.", "error");
+      return;
+    }
+
+    const safeFileName = safeOrderId ? `sales-order-${safeOrderId}.iif` : `sales-order-${Date.now()}.iif`;
+    downloadIifFile(iifText, safeFileName);
+  } catch (err) {
+    const message = err.userMessage || err.message || String(err);
+    showError(message);
+    AppClient.showToast("QuickBooks export failed.", "error");
+  }
+}
+
 function filterOrdersByDate(orders) {
   const { start, end } = state.filter;
   if (!start && !end) return orders;
@@ -234,6 +306,7 @@ function applyOrdersPayload(payload) {
 function renderHistory() {
   ui.content.innerHTML = "";
   loadDeliveryState();
+  state.qbMissingEls = new Map();
 
   const filteredOrders = filterOrdersByDate(state.orders);
 
@@ -270,21 +343,39 @@ function renderHistory() {
     ordersWrap.className = "historyOrders";
 
     storeOrders.forEach((order) => {
-      const orderId = String(order.order_id || "").trim() || "(no id)";
+      const orderId = String(order.order_id || "").trim();
       const createdAt = formatDate(order.created_at);
       const orderDetails = document.createElement("details");
       orderDetails.className = "historyOrder";
 
       const orderSummary = document.createElement("summary");
-      orderSummary.innerHTML = `
-        <div>
-          <div class="historyOrder__title">Order from: ${escapeHtml(createdAt)} · ${escapeHtml(storeName)}</div>
-        </div>
-        <div class="historyOrder__metaSummary">
-          <span>${escapeHtml(String(order.item_count || ""))} items</span>
-          <span>${escapeHtml(String(order.total_qty || ""))} qty</span>
-        </div>
+      const summaryDetails = document.createElement("div");
+      summaryDetails.innerHTML = `
+        <div class="historyOrder__title">Order from: ${escapeHtml(createdAt)} · ${escapeHtml(storeName)}</div>
       `;
+
+      const summaryActions = document.createElement("div");
+      summaryActions.className = "historyOrder__summaryActions";
+
+      const summaryMeta = document.createElement("div");
+      summaryMeta.className = "historyOrder__metaSummary";
+      summaryMeta.innerHTML = `
+        <span>${escapeHtml(String(order.item_count || ""))} items</span>
+        <span>${escapeHtml(String(order.total_qty || ""))} qty</span>
+      `;
+
+      const qbButton = document.createElement("button");
+      qbButton.type = "button";
+      qbButton.className = "btn btn--small historyOrder__qbBtn";
+      qbButton.textContent = "Export for QB";
+      qbButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        exportOrderToIIF(orderId);
+      });
+
+      summaryActions.append(summaryMeta, qbButton);
+      orderSummary.append(summaryDetails, summaryActions);
       orderDetails.appendChild(orderSummary);
 
       const orderBody = document.createElement("div");
@@ -300,6 +391,10 @@ function renderHistory() {
       const items = sortItems(itemsByOrder.get(orderId) || []);
       const itemsWrap = document.createElement("div");
       itemsWrap.className = "historyItems";
+      const missingWrap = document.createElement("div");
+      missingWrap.className = "historyOrder__qbMissing";
+      missingWrap.hidden = true;
+      state.qbMissingEls.set(orderId, missingWrap);
 
       if (!items.length) {
         itemsWrap.innerHTML = `<div class="historyEmpty">No items recorded for this order.</div>`;
@@ -342,7 +437,7 @@ function renderHistory() {
         });
       }
 
-      orderBody.appendChild(itemsWrap);
+      orderBody.append(missingWrap, itemsWrap);
       orderDetails.appendChild(orderBody);
       ordersWrap.appendChild(orderDetails);
     });

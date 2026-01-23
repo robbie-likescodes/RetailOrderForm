@@ -7,7 +7,7 @@ function doGet(e) {
       return jsonResponse(buildError_(
         "Missing action.",
         "MISSING_ACTION",
-        { expected: ["categories", "products", "listOrders", "health"] },
+        { expected: ["categories", "products", "listOrders", "exportOrderIif", "health"] },
         requestId
       ));
     }
@@ -33,17 +33,18 @@ function doGet(e) {
       const rows = getSheetRows_(CONFIG.sheets.products)
         .filter(row => {
           const sku = getFirstValue_(row, ["sku", "product_sku", "item_sku", "id", "product_id"]);
-          const name = getFirstValue_(row, ["name", "product_name", "item_name", "description"]);
+          const name = getFirstValue_(row, ["item_name", "product_name", "description"]);
           const category = getFirstValue_(row, ["category", "category_name", "department", "dept"]);
           return sku && name && category && isRowActive_(row);
         })
         .map(row => ({
           item_no: String(getFirstValue_(row, ["item_no", "item_number", "item"]) || "").trim(),
           sku: String(getFirstValue_(row, ["sku", "product_sku", "item_sku", "id", "product_id"]) || "").trim(),
-          name: String(getFirstValue_(row, ["name", "product_name", "item_name", "description"]) || "").trim(),
+          name: String(getFirstValue_(row, ["item_name", "product_name", "description"]) || "").trim(),
           category: String(getFirstValue_(row, ["category", "category_name", "department", "dept"]) || "").trim(),
           unit: String(getFirstValue_(row, ["unit", "uom"]) || "").trim(),
           pack_size: String(getFirstValue_(row, ["pack_size", "pack", "case_size", "case_pack"]) || "").trim(),
+          qb_list: String(getFirstValue_(row, ["qb_list", "quickbooks_list", "quickbooks_item", "qb_item"]) || "").trim(),
           sort: Number(getFirstValue_(row, ["sort", "order", "display_order"]) || 9999),
         }))
         .sort((a, b) => a.sort - b.sort);
@@ -81,7 +82,7 @@ function doGet(e) {
 
       const itemsByOrder = new Map();
       itemRows
-        .filter(row => row.order_id && (row.sku || row.name))
+        .filter(row => row.order_id && (row.sku || row.item_name))
         .forEach(row => {
           const orderId = String(row.order_id || "").trim();
           if (!orderId) return;
@@ -89,11 +90,12 @@ function doGet(e) {
             order_id: orderId,
             item_no: String(row.item_no || "").trim(),
             sku: String(row.sku || "").trim(),
-            name: String(row.name || row.sku || "").trim(),
+            name: String(getFirstValue_(row, ["item_name", "product_name", "description"]) || row.sku || "").trim(),
             category: String(row.category || "").trim(),
             unit: String(row.unit || "").trim(),
             pack_size: String(row.pack_size || "").trim(),
             qty: row.qty || "",
+            qb_list: String(row.qb_list || "").trim(),
           };
           if (!itemsByOrder.has(orderId)) itemsByOrder.set(orderId, []);
           itemsByOrder.get(orderId).push(item);
@@ -170,6 +172,24 @@ function doGet(e) {
       }, requestId));
     }
 
+    if (action === "exportorderiif") {
+      const orderId = String((e && e.parameter && e.parameter.order_id) || "").trim();
+      if (!orderId) {
+        return jsonResponse(buildError_("Missing order_id.", "MISSING_ORDER_ID", null, requestId));
+      }
+
+      const exportPayload = buildOrderIifExport_(orderId);
+      if (exportPayload.error) {
+        return jsonResponse(buildError_(exportPayload.error, "EXPORT_FAILED", exportPayload.details, requestId));
+      }
+      return jsonResponse(buildSuccess_({
+        action: "exportOrderIif",
+        request_id: requestId,
+        order_id: orderId,
+        ...exportPayload,
+      }, requestId));
+    }
+
     if (action === "health") {
       const categories = getSheetRows_(CONFIG.sheets.categories);
       const products = getSheetRows_(CONFIG.sheets.products);
@@ -187,7 +207,7 @@ function doGet(e) {
     return jsonResponse(buildError_(
       `Unknown action: ${action}`,
       "UNKNOWN_ACTION",
-      { received: action, expected: ["categories", "products", "listOrders", "health"] },
+      { received: action, expected: ["categories", "products", "listOrders", "exportOrderIif", "health"] },
       requestId
     ));
   } catch (err) {
