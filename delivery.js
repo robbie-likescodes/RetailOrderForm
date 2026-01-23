@@ -525,13 +525,14 @@ function renderOrders() {
           const itemMeta = [item.item_no, item.unit, item.pack_size].filter(Boolean).map(escapeHtml).join(" • ");
 
           const itemInfo = document.createElement("div");
-          const unitLabel = item.unit ? `Unit: ${item.unit}` : "";
+          const unitLabel = item.unit ? escapeHtml(String(item.unit)) : "—";
           itemInfo.innerHTML = `
             <div class="historyItem__name">${escapeHtml(item.name || item.sku || "Item")}</div>
             <div class="historyItem__meta">
               ${itemMeta ? `${itemMeta}<span class="historyItem__metaSeparator"> • </span>` : ""}
               <span class="historyItem__ordered">Ordered: <span class="historyItem__orderedQty">${escapeHtml(String(orderedQty))}</span></span>
             </div>
+            <div class="historyItem__unit">Unit: ${unitLabel}</div>
             <div class="deliveryItem__status">Status: ${escapeHtml(statusLabel)}</div>
           `;
 
