@@ -2,6 +2,7 @@ const ui = {
   deliveryDate: document.getElementById("deliveryDate"),
   deliveryOrders: document.getElementById("deliveryOrders"),
   refreshBtn: document.getElementById("deliveryRefreshBtn"),
+  statusTabs: document.getElementById("deliveryStatusTabs"),
 };
 
 const DELIVERY_STATE_KEY = "orderportal_delivery_state_v1";
@@ -13,10 +14,34 @@ const ORDER_STATUS = {
 
 let orders = [];
 let deliveryState = {};
+let currentStatusFilter = "All";
 
 function setText(el, txt) {
   if (!el) return;
   el.textContent = txt;
+}
+
+function getActiveStatusFilter() {
+  const activeTab = ui.statusTabs?.querySelector(".btn--tab.is-active");
+  return activeTab?.dataset?.status || "All";
+}
+
+function updateStatusTabs() {
+  if (!ui.statusTabs) return;
+  const buttons = ui.statusTabs.querySelectorAll("button[data-status]");
+  buttons.forEach((button) => {
+    const status = button.dataset.status || "";
+    const isActive = status === currentStatusFilter;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+    button.tabIndex = isActive ? 0 : -1;
+  });
+}
+
+function setStatusFilter(nextStatus) {
+  currentStatusFilter = nextStatus || "All";
+  updateStatusTabs();
+  renderOrders();
 }
 
 function normalizeKey(key) {
@@ -302,6 +327,10 @@ function deriveOrderStatusFromItems(order, fallbackStatus) {
   return ORDER_STATUS.IN_PROGRESS;
 }
 
+function getDerivedOrderStatus(order) {
+  return deriveOrderStatusFromItems(order, order.delivery?.status || order.status);
+}
+
 async function pushOrderStatus(orderId, status) {
   if (!AppClient?.updateOrderStatus) return;
   try {
@@ -373,12 +402,37 @@ function renderOrders() {
     return;
   }
 
+  const normalizedWithStatus = normalizedOrders.map((order) => {
+    const derivedStatus = getDerivedOrderStatus(order);
+    if (derivedStatus !== order.delivery.status) {
+      deliveryState[order.id] = {
+        status: derivedStatus,
+        items: order.delivery.items,
+        touched: order.delivery.touched,
+      };
+      saveDeliveryState();
+    }
+    return { ...order, derivedStatus };
+  });
+
+  const filteredOrders = currentStatusFilter === "All"
+    ? normalizedWithStatus
+    : normalizedWithStatus.filter((order) => order.derivedStatus === currentStatusFilter);
+
+  if (!filteredOrders.length) {
+    const empty = document.createElement("div");
+    empty.className = "historyEmpty";
+    empty.textContent = `No ${currentStatusFilter === "All" ? "" : currentStatusFilter + " "}orders found for today.`;
+    ui.deliveryOrders.appendChild(empty);
+    return;
+  }
+
   const itemsByOrder = groupItemsByOrder(
-    normalizedOrders.flatMap((order) => Array.isArray(order.items) ? order.items : [])
+    filteredOrders.flatMap((order) => Array.isArray(order.items) ? order.items : [])
   );
 
   const stores = new Map();
-  normalizedOrders.forEach((order) => {
+  filteredOrders.forEach((order) => {
     const store = String(order.store || "Unknown Store").trim() || "Unknown Store";
     if (!stores.has(store)) stores.set(store, []);
     stores.get(store).push(order);
@@ -420,19 +474,9 @@ function renderOrders() {
         </div>
       `;
 
-      const derivedStatus = deriveOrderStatusFromItems(order, order.delivery.status || order.status);
-      if (derivedStatus !== order.delivery.status) {
-        deliveryState[order.id] = {
-          status: derivedStatus,
-          items: order.delivery.items,
-          touched: order.delivery.touched,
-        };
-        saveDeliveryState();
-      }
-
       const statusBadge = document.createElement("div");
       statusBadge.className = "statusBadge";
-      statusBadge.textContent = derivedStatus;
+      statusBadge.textContent = order.derivedStatus;
 
       orderSummary.appendChild(statusBadge);
       orderDetails.appendChild(orderSummary);
@@ -592,6 +636,8 @@ function loadFromCache() {
 function init() {
   loadDeliveryState();
   loadFromCache();
+  currentStatusFilter = getActiveStatusFilter();
+  updateStatusTabs();
   setText(ui.deliveryDate, `Today: ${todayDateValue()}`);
   AppClient.bindRefreshButtons({
     orders: (button) => refreshOrders(button),
@@ -606,6 +652,13 @@ function init() {
       AppClient.hideBanner();
     }
   });
+  if (ui.statusTabs) {
+    ui.statusTabs.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-status]");
+      if (!button) return;
+      setStatusFilter(button.dataset.status || "All");
+    });
+  }
   refreshOrders(ui.refreshBtn);
 }
 
