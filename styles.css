@@ -1366,6 +1366,10 @@ textarea:focus{
   transition: border-color 0.2s ease, background 0.2s ease;
 }
 
+.itemRow__checkboxInput--pulled{
+  border-color: rgba(22, 163, 74, 0.7);
+}
+
 .itemRow__checkboxInput::after{
   content: "";
   width: 10px;
@@ -1381,6 +1385,15 @@ textarea:focus{
   background: rgba(220, 38, 38, 0.12);
 }
 
+.itemRow__checkboxInput--pulled::after{
+  background: #16a34a;
+}
+
+.itemRow__checkboxInput--pulled:checked{
+  border-color: #16a34a;
+  background: rgba(22, 163, 74, 0.16);
+}
+
 .itemRow__checkboxInput:checked::after{
   transform: scale(1);
 }
@@ -1388,6 +1401,10 @@ textarea:focus{
 .itemRow__checkboxInput:focus-visible{
   outline: 2px solid rgba(220, 38, 38, 0.4);
   outline-offset: 2px;
+}
+
+.itemRow__checkboxInput--pulled:focus-visible{
+  outline-color: rgba(22, 163, 74, 0.45);
 }
 
 .deliveryFooter{

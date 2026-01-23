@@ -554,10 +554,20 @@ function renderOrders() {
           const quickActions = document.createElement("div");
           quickActions.className = "itemRow__quickActions";
 
-          const pulledButton = document.createElement("button");
-          pulledButton.type = "button";
-          pulledButton.className = "itemRow__action itemRow__action--pulled";
-          pulledButton.textContent = "Pulled";
+          const pulledToggle = document.createElement("label");
+          pulledToggle.className = "itemRow__action itemRow__action--pulled itemRow__checkbox";
+
+          const pulledInput = document.createElement("input");
+          pulledInput.type = "checkbox";
+          pulledInput.className = "itemRow__checkboxInput itemRow__checkboxInput--pulled";
+          pulledInput.checked = progress.state === "pulled";
+          pulledInput.setAttribute("aria-label", `Mark ${item.name || "item"} pulled`);
+
+          const pulledText = document.createElement("span");
+          pulledText.textContent = "Pulled";
+
+          pulledToggle.appendChild(pulledInput);
+          pulledToggle.appendChild(pulledText);
 
 
           const unavailableToggle = document.createElement("label");
@@ -575,7 +585,7 @@ function renderOrders() {
           unavailableToggle.appendChild(unavailableInput);
           unavailableToggle.appendChild(unavailableText);
 
-          quickActions.appendChild(pulledButton);
+          quickActions.appendChild(pulledToggle);
           quickActions.appendChild(unavailableToggle);
 
           itemControls.appendChild(select);
@@ -593,8 +603,12 @@ function renderOrders() {
             applyStatus(nextStatus, nextPulled);
           });
 
-          pulledButton.addEventListener("click", () => {
-            applyStatus("Pulled", progress.orderedQty);
+          pulledInput.addEventListener("change", () => {
+            if (pulledInput.checked) {
+              applyStatus("Pulled", progress.orderedQty);
+            } else {
+              applyStatus("Not Pulled", 0);
+            }
           });
 
           unavailableInput.addEventListener("change", () => {
