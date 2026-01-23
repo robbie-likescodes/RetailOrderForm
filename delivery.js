@@ -401,7 +401,6 @@ function renderOrders() {
 
     storeOrders.forEach((order) => {
       const orderKey = String(order.id || order.order_id || "").trim();
-      const orderId = orderKey || "(no id)";
       const createdAt = formatDate(order.created_at || order.requested_date || order.created_date);
       const orderDetails = document.createElement("details");
       orderDetails.className = "historyOrder";
@@ -414,8 +413,7 @@ function renderOrders() {
       const orderSummary = document.createElement("summary");
       orderSummary.innerHTML = `
         <div>
-          <div class="historyOrder__title">Order ${escapeHtml(orderId)}</div>
-          <div class="historyOrder__subtitle">${escapeHtml(createdAt)}</div>
+          <div class="historyOrder__title">Order: ${escapeHtml(createdAt)} · ${escapeHtml(storeName)}</div>
         </div>
       `;
 
