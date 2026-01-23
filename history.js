@@ -279,7 +279,6 @@ function renderHistory() {
       orderSummary.innerHTML = `
         <div>
           <div class="historyOrder__title">Order from: ${escapeHtml(createdAt)} · ${escapeHtml(storeName)}</div>
-          <div class="historyOrder__subtitle">${escapeHtml(orderId)}</div>
         </div>
         <div class="historyOrder__metaSummary">
           <span>${escapeHtml(String(order.item_count || ""))} items</span>
