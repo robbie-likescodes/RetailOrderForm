@@ -372,6 +372,9 @@ function setItemStatus(order, item, status, pulledQty) {
   deliveryState[orderId] = next;
   saveDeliveryState();
   if (derivedStatus !== previousStatus) {
+    if (derivedStatus === ORDER_STATUS.COMPLETE) {
+      AppClient.showToast?.("Order Marked as Complete", "success");
+    }
     pushOrderStatus(orderId, derivedStatus);
   }
   pushItemStatus(orderId, item, status);
