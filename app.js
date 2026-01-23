@@ -1484,8 +1484,9 @@ function renderReports() {
   }
 
   const now = new Date();
-  const currentMonthStart = startOfMonth(now);
-  const currentMonthEnd = endOfMonth(now);
+  const last30DaysStart = new Date(now);
+  last30DaysStart.setDate(last30DaysStart.getDate() - 30);
+  const last30DaysEnd = new Date(now);
   const lastMonthAnchor = addMonths(now, -1);
   const lastMonthStart = startOfMonth(lastMonthAnchor);
   const lastMonthEnd = endOfMonth(lastMonthAnchor);
@@ -1504,11 +1505,11 @@ function renderReports() {
       active: !!(compareStart || compareEnd),
     },
     {
-      key: "currentMonth",
-      label: "Current month",
-      rangeLabel: formatDateRange(currentMonthStart, currentMonthEnd),
-      start: currentMonthStart,
-      end: currentMonthEnd,
+      key: "last30Days",
+      label: "Last 30 days",
+      rangeLabel: formatDateRange(last30DaysStart, last30DaysEnd),
+      start: last30DaysStart,
+      end: last30DaysEnd,
       active: true,
     },
     {
@@ -1538,7 +1539,7 @@ function renderReports() {
   ];
 
   if (ui.compareRangeHint) {
-    ui.compareRangeHint.textContent = "Timeframes use calendar periods. Custom range uses the start/end dates above.";
+    ui.compareRangeHint.textContent = "Timeframes use calendar periods, except Last 30 days. Custom range uses the start/end dates above.";
   }
 
   const compareTotals = new Map();
