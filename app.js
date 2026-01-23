@@ -358,17 +358,32 @@ function isFiniteInt(n) {
 
 function parseDateValue(value) {
   if (!value) return null;
-  const [datePart, timePart] = String(value).split("T");
-  const [year, month, day] = String(datePart).split("-").map(Number);
-  if (!year || !month || !day) return null;
-  let hours = 0;
-  let minutes = 0;
-  if (timePart) {
-    const [hourPart, minutePart] = timePart.split(":").map(Number);
-    if (Number.isFinite(hourPart)) hours = hourPart;
-    if (Number.isFinite(minutePart)) minutes = minutePart;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : new Date(value.getTime());
   }
-  return new Date(year, month - 1, day, hours, minutes);
+  if (typeof value === "number") {
+    const numericDate = new Date(value);
+    return Number.isNaN(numericDate.getTime()) ? null : numericDate;
+  }
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const isoMatch = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{2}))?/);
+  if (isoMatch) {
+    const [, year, month, day, hourPart, minutePart] = isoMatch;
+    const hours = Number.isFinite(Number(hourPart)) ? Number(hourPart) : 0;
+    const minutes = Number.isFinite(Number(minutePart)) ? Number(minutePart) : 0;
+    return new Date(Number(year), Number(month) - 1, Number(day), hours, minutes);
+  }
+  const slashMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:[ ,T](\d{1,2}):(\d{2}))?/);
+  if (slashMatch) {
+    const [, month, day, yearRaw, hourPart, minutePart] = slashMatch;
+    const year = yearRaw.length === 2 ? Number(`20${yearRaw}`) : Number(yearRaw);
+    const hours = Number.isFinite(Number(hourPart)) ? Number(hourPart) : 0;
+    const minutes = Number.isFinite(Number(minutePart)) ? Number(minutePart) : 0;
+    return new Date(year, Number(month) - 1, Number(day), hours, minutes);
+  }
+  const parsed = Date.parse(raw);
+  return Number.isNaN(parsed) ? null : new Date(parsed);
 }
 
 function formatShortDate(date) {
@@ -1423,7 +1438,12 @@ function syncReportFiltersFromInputs() {
 
 function itemMatchesProduct(item, productKey) {
   if (!productKey) return false;
-  return item.sku === productKey || item.item_no === productKey || item.name === productKey;
+  const normalizedTarget = normalizeKey(productKey);
+  const skuMatch = normalizeKey(item.sku) === normalizedTarget;
+  const itemNoMatch = normalizeKey(item.item_no) === normalizedTarget;
+  const nameMatch = normalizeKey(item.name) === normalizedTarget;
+  return item.sku === productKey || item.item_no === productKey || item.name === productKey
+    || skuMatch || itemNoMatch || nameMatch;
 }
 
 function itemMatchesCategory(item, categoryKey) {
@@ -1551,8 +1571,8 @@ function renderReports() {
 
   if (compareValid) {
     state.orders.forEach((order) => {
-      if (!order || !order.requested_date) return;
-      const orderDate = parseDateValue(order.requested_date);
+      if (!order) return;
+      const orderDate = parseDateValue(order.requested_date || order.created_at);
       if (!orderDate) return;
       if (!stores.includes(order.store)) return;
 
