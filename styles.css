@@ -206,6 +206,11 @@ body{
   align-items: end;
 }
 
+.reports__actions{
+  display: grid;
+  gap: 8px;
+}
+
 .reports__hint{
   margin-top: -6px;
 }
@@ -998,6 +1003,17 @@ textarea:focus{
   background: linear-gradient(135deg, var(--primary), var(--primary-strong));
   color: #fff;
   box-shadow: 0 12px 20px rgba(79, 70, 229, 0.2);
+}
+
+.btn--go{
+  border: none;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #fff;
+  box-shadow: 0 14px 24px rgba(22, 163, 74, 0.28);
+}
+
+.btn--go:hover{
+  box-shadow: 0 16px 28px rgba(22, 163, 74, 0.36);
 }
 
 .btn--ghost{
