@@ -715,8 +715,8 @@ select.select--multi option{
 .multiselect__option{
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 4px;
+  gap: 10px;
+  padding: 8px 6px;
   border-radius: 10px;
   color: var(--text);
 }
@@ -727,6 +727,32 @@ select.select--multi option{
 
 .multiselect__option input{
   accent-color: var(--primary);
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+}
+
+.multiselect__option span{
+  flex: 1;
+  min-width: 0;
+  line-height: 1.4;
+}
+
+@media (max-width: 720px){
+  .multiselect__menu{
+    padding: 14px;
+    max-height: 60vh;
+  }
+
+  .multiselect__option{
+    padding: 10px 8px;
+    font-size: 16px;
+  }
+
+  .multiselect__option input{
+    width: 20px;
+    height: 20px;
+  }
 }
 
 input[type="datetime-local"]{
