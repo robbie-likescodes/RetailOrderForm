@@ -817,8 +817,54 @@ function escapeIifField_(value) {
     .trim();
 }
 
+function isUuid_(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    String(value || "").trim()
+  );
+}
+
+function buildIifDocNum_(orderRow, fallbackId) {
+  const candidates = [
+    getFirstValue_(orderRow, [
+      "order_number",
+      "order_num",
+      "ordernumber",
+      "order_no",
+      "orderno",
+      "order_id",
+      "orderid",
+      "id",
+    ]),
+    fallbackId,
+  ];
+  for (var i = 0; i < candidates.length; i += 1) {
+    var candidate = String(candidates[i] || "").trim();
+    if (!candidate) continue;
+    if (!isUuid_(candidate)) return candidate;
+  }
+  const createdAt = getFirstValue_(orderRow, [
+    "created_at",
+    "timestamp",
+    "created",
+    "submitted_at",
+    "submitted",
+    "order_date",
+    "date",
+  ]);
+  const fallbackDate = createdAt instanceof Date ? createdAt : new Date(createdAt || Date.now());
+  return `SO-${Utilities.formatDate(fallbackDate, Session.getScriptTimeZone(), "yyyyMMddHHmmss")}`;
+}
+
 /**
  * Builds a QuickBooks IIF Sales Order export for a single order.
+ *
+ * Example IIF block:
+ * !TRNS\tTRNSTYPE\tDATE\tACCNT\tNAME\tDOCNUM\tMEMO
+ * !SPL\tTRNSTYPE\tDATE\tACCNT\tNAME\tQNTY\tITEM\tMEMO
+ * !ENDTRNS
+ * TRNS\tSALESORD\t01/15/2024\tSales Orders\tExample Store\tSO-1001\tImported from Retail Order Portal
+ * SPL\tSALESORD\t01/15/2024\tSales Orders\tExample Store\t2\tSHOTT: Banana\tBanana
+ * ENDTRNS
  *
  * Order headers used:
  * - order_id (Orders sheet)
@@ -895,18 +941,20 @@ function buildOrderIifExport_(orderId) {
   const customerName = String(orderRow.store || "Unknown Store").trim();
   const memo = "Imported from Retail Order Portal";
   const accountName = "Sales Orders";
+  const docNum = buildIifDocNum_(orderRow, orderId);
 
   const lines = [
     "!TRNS\tTRNSTYPE\tDATE\tACCNT\tNAME\tDOCNUM\tMEMO",
     "!SPL\tTRNSTYPE\tDATE\tACCNT\tNAME\tQNTY\tITEM\tMEMO",
+    "!ENDTRNS",
   ];
   lines.push([
     "TRNS",
-    "SALES ORDER",
+    "SALESORD",
     orderDate,
     accountName,
     customerName,
-    orderId,
+    docNum,
     memo,
   ].map(escapeIifField_).join("\t"));
 
@@ -914,7 +962,7 @@ function buildOrderIifExport_(orderId) {
     const itemName = item.qb_list || item.name;
     lines.push([
       "SPL",
-      "SALES ORDER",
+      "SALESORD",
       orderDate,
       accountName,
       customerName,
