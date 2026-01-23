@@ -1285,6 +1285,11 @@ textarea:focus{
   font-weight: 600;
   padding: 4px 10px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.2;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .itemRow__action--pulled{
@@ -1306,12 +1311,47 @@ textarea:focus{
 .itemRow__checkbox{
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  padding: 6px 12px;
 }
 
 .itemRow__checkboxInput{
   margin: 0;
-  accent-color: #dc2626;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: 1.5px solid rgba(220, 38, 38, 0.6);
+  background: #fff;
+  display: inline-grid;
+  place-content: center;
+  flex: 0 0 auto;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.itemRow__checkboxInput::after{
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: #dc2626;
+  transform: scale(0);
+  transition: transform 0.2s ease;
+}
+
+.itemRow__checkboxInput:checked{
+  border-color: #dc2626;
+  background: rgba(220, 38, 38, 0.12);
+}
+
+.itemRow__checkboxInput:checked::after{
+  transform: scale(1);
+}
+
+.itemRow__checkboxInput:focus-visible{
+  outline: 2px solid rgba(220, 38, 38, 0.4);
+  outline-offset: 2px;
 }
 
 .deliveryFooter{
