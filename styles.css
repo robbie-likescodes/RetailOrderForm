@@ -1041,6 +1041,21 @@ textarea:focus{
   border-radius: 999px;
 }
 
+.statusBadge--inProgress{
+  color: #b45309;
+  background: rgba(250, 204, 21, 0.18);
+}
+
+.statusBadge--complete{
+  color: #047857;
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.statusBadge--notStarted{
+  color: #b91c1c;
+  background: rgba(248, 113, 113, 0.18);
+}
+
 .statusBadge--pending{
   color: var(--muted);
   background: rgba(148, 163, 184, 0.18);
