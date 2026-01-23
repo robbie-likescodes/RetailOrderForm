@@ -479,12 +479,7 @@ function loadCache() {
   // Apply store lock if present
   if (STORE_LOCK) state.meta.store = STORE_LOCK;
   const today = todayDateValue();
-  const requestedDate = state.meta.requested_date;
-  const requestedDateParsed = parseDateValue(requestedDate);
-  const todayParsed = parseDateValue(today);
-  if (!requestedDate || !requestedDateParsed || (todayParsed && requestedDateParsed < todayParsed)) {
-    state.meta.requested_date = today;
-  }
+  state.meta.requested_date = today;
 
   hydrateMetaInputs();
 }
@@ -582,7 +577,11 @@ function saveCache() {
 // =========================
 function hydrateMetaInputs() {
   if (ui.store) ui.store.value = state.meta.store || "";
-  if (ui.requestedDate) ui.requestedDate.value = state.meta.requested_date || "";
+  if (ui.requestedDate) {
+    ui.requestedDate.value = state.meta.requested_date || "";
+    ui.requestedDate.setAttribute("disabled", "disabled");
+    ui.requestedDate.setAttribute("aria-disabled", "true");
+  }
   if (ui.placedBy) ui.placedBy.value = state.meta.placed_by || "";
   if (ui.email) ui.email.value = state.meta.email || "";
   if (ui.notes) ui.notes.value = state.meta.notes || "";
@@ -596,7 +595,7 @@ function hydrateMetaInputs() {
 
 function syncMetaFromInputs() {
   if (ui.store) state.meta.store = ui.store.value.trim();
-  if (ui.requestedDate) state.meta.requested_date = ui.requestedDate.value;
+  state.meta.requested_date = todayDateValue();
   if (ui.placedBy) state.meta.placed_by = ui.placedBy.value.trim();
   if (ui.email) state.meta.email = ui.email.value.trim();
   if (ui.notes) state.meta.notes = ui.notes.value.trim();
