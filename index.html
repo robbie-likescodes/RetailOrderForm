@@ -265,13 +265,21 @@
             Grand total missing: <strong id="missingGrandTotal">0</strong>
           </div>
 
-          <h4 class="reports__subhead" id="missingItemsTitle" hidden>Top Missing Items</h4>
-          <div class="tableWrap tableWrap--wide" id="missingItemsWrap" hidden>
-            <table class="table">
-              <thead id="missingItemsHead"></thead>
-              <tbody id="missingItemsBody"></tbody>
-            </table>
-            <div class="empty" id="missingItemsEmpty" hidden>No missing inventory found in this range.</div>
+          <div class="reports__collapsible" id="missingItemsPanel">
+            <div class="reports__collapsibleContent" id="missingItemsContent">
+              <h4 class="reports__subhead" id="missingItemsTitle">Top Missing Items</h4>
+              <div class="tableWrap tableWrap--wide" id="missingItemsWrap">
+                <table class="table">
+                  <thead id="missingItemsHead"></thead>
+                  <tbody id="missingItemsBody"></tbody>
+                </table>
+                <div class="empty" id="missingItemsEmpty" hidden>No missing inventory found in this range.</div>
+              </div>
+            </div>
+            <button class="btn reports__collapsibleToggle" id="missingItemsToggle" type="button" aria-expanded="true" aria-controls="missingItemsContent">
+              <span>Top Missing Items</span>
+              <span class="reports__collapsibleIcon" aria-hidden="true">▾</span>
+            </button>
           </div>
         </div>
       </div>

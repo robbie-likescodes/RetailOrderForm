@@ -164,6 +164,8 @@ const ui = {
   missingItemsHead: $("missingItemsHead"),
   missingItemsBody: $("missingItemsBody"),
   missingItemsEmpty: $("missingItemsEmpty"),
+  missingItemsContent: $("missingItemsContent"),
+  missingItemsToggle: $("missingItemsToggle"),
   missingRangeHint: $("missingRangeHint"),
   missingGrandTotal: $("missingGrandTotal"),
   missingGrandTotalWrap: $("missingGrandTotalWrap"),
@@ -206,6 +208,7 @@ const state = {
     missingStart: "",
     missingEnd: "",
     missingSort: "missing-desc",
+    missingItemsOpen: true,
   },
   activeTab: "order",
   submitting: false,
@@ -1516,6 +1519,15 @@ function updateMissingScopeUI() {
   setHidden(ui.missingCategoryField, !isCategory);
 }
 
+function setMissingItemsOpen(isOpen) {
+  const nextOpen = Boolean(isOpen);
+  state.reports.missingItemsOpen = nextOpen;
+  if (ui.missingItemsToggle) {
+    ui.missingItemsToggle.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+  }
+  setHidden(ui.missingItemsContent, !nextOpen);
+}
+
 function setReportMode(mode) {
   const nextMode = mode === "missing" ? "missing" : "volume";
   state.reports.mode = nextMode;
@@ -1822,14 +1834,13 @@ function renderReports() {
           if (!match) return;
           const current = missingStoreTotals.get(order.store) || 0;
           missingStoreTotals.set(order.store, current + statusResult.missingQty);
-        } else {
-          const key = item.sku || item.item_no || item.name;
-          if (!key) return;
-          const current = missingItemTotals.get(key) || { name: item.name || key, qty: 0 };
-          current.name = item.name || current.name || key;
-          current.qty += statusResult.missingQty;
-          missingItemTotals.set(key, current);
         }
+        const key = item.sku || item.item_no || item.name;
+        if (!key) return;
+        const current = missingItemTotals.get(key) || { name: item.name || key, qty: 0 };
+        current.name = item.name || current.name || key;
+        current.qty += statusResult.missingQty;
+        missingItemTotals.set(key, current);
       });
     });
   }
@@ -1888,7 +1899,7 @@ function renderReports() {
 
   if (ui.missingItemsBody) {
     ui.missingItemsBody.innerHTML = "";
-    if (missingValid && !missingHasFilter && missingItemTotals.size) {
+    if (missingValid && missingItemTotals.size) {
       const itemList = Array.from(missingItemTotals.values());
       const sortedItems = itemList.sort((a, b) => {
         if (missingSort === "item-asc" || missingSort === "store-asc" || missingSort === "store-desc") {
@@ -1918,19 +1929,19 @@ function renderReports() {
       ? "No missing inventory found in this range."
       : "Start date must be before end date.";
   }
-  if (ui.missingItemsEmpty && !missingHasFilter) {
+  if (ui.missingItemsEmpty) {
     ui.missingItemsEmpty.textContent = missingValid
       ? "No missing inventory found in this range."
       : "Start date must be before end date.";
   }
   const showMissingStoreEmpty = showMissingStore && (!missingValid || !missingStoreTotals.size);
-  const showMissingItemsEmpty = !showMissingStore && (!missingValid || !missingItemTotals.size);
+  const showMissingItemsEmpty = !missingValid || !missingItemTotals.size;
   setHidden(ui.missingStoreTitle, !showMissingStore);
-  setHidden(ui.missingItemsTitle, showMissingStore);
   setHidden(ui.missingStoreWrap, !showMissingStore);
   setHidden(ui.missingStoreEmpty, !showMissingStoreEmpty);
-  setHidden(ui.missingItemsWrap, showMissingStore);
+  setHidden(ui.missingItemsWrap, !missingItemTotals.size);
   setHidden(ui.missingItemsEmpty, !showMissingItemsEmpty);
+  setMissingItemsOpen(state.reports.missingItemsOpen);
 }
 
 function applyReportFilters() {
@@ -2173,6 +2184,9 @@ function wireEvents() {
   ui.reportModeMissing?.addEventListener("click", () => {
     setReportMode("missing");
     renderReports();
+  });
+  ui.missingItemsToggle?.addEventListener("click", () => {
+    setMissingItemsOpen(!state.reports.missingItemsOpen);
   });
 
   // Optional: category jump toggle

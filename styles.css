@@ -237,6 +237,43 @@ body{
   color: var(--muted);
 }
 
+.reports__collapsible{
+  display: grid;
+  gap: 10px;
+}
+
+.reports__collapsibleContent{
+  display: grid;
+  gap: 12px;
+}
+
+.reports__collapsibleToggle{
+  position: sticky;
+  bottom: 12px;
+  width: 100%;
+  justify-content: space-between;
+  background: #ffffff;
+  box-shadow: var(--shadow-soft);
+  z-index: 5;
+}
+
+.reports__collapsibleIcon{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(79, 70, 229, 0.12);
+  color: var(--primary-strong);
+  font-size: 14px;
+  transition: transform 0.2s ease;
+}
+
+.reports__collapsibleToggle[aria-expanded="false"] .reports__collapsibleIcon{
+  transform: rotate(-90deg);
+}
+
 .card{
   background: var(--card);
   border: var(--border);
