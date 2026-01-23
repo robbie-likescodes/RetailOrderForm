@@ -431,7 +431,12 @@ function renderOrders() {
       }
 
       const statusBadge = document.createElement("div");
-      statusBadge.className = "statusBadge";
+      const normalizedStatus = String(derivedStatus || "").trim().toLowerCase();
+      let statusClass = "statusBadge";
+      if (normalizedStatus === "in progress") statusClass += " statusBadge--inProgress";
+      if (normalizedStatus === "complete") statusClass += " statusBadge--complete";
+      if (normalizedStatus === "not started") statusClass += " statusBadge--notStarted";
+      statusBadge.className = statusClass;
       statusBadge.textContent = derivedStatus;
 
       orderSummary.appendChild(statusBadge);
