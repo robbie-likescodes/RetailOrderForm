@@ -11,6 +11,8 @@ const ui = {
   status: $("historyStatus"),
   error: $("historyError"),
   content: $("historyContent"),
+  startDate: $("historyStartDate"),
+  endDate: $("historyEndDate"),
 };
 
 const state = {
@@ -18,6 +20,10 @@ const state = {
   items: [],
   catalog: null,
   ordersUpdatedAt: "",
+  filter: {
+    start: null,
+    end: null,
+  },
 };
 
 function setText(el, txt) {
@@ -52,6 +58,24 @@ function parseDate(value) {
 function formatDate(value) {
   const date = parseDate(value);
   return date ? date.toLocaleString() : "Unknown time";
+}
+
+function formatDateInputValue(date) {
+  if (!date) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateInput(value, { endOfDay = false } = {}) {
+  if (!value) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  if (endOfDay) {
+    return new Date(year, month - 1, day, 23, 59, 59, 999);
+  }
+  return new Date(year, month - 1, day, 0, 0, 0, 0);
 }
 
 function groupItemsByOrder(items) {
@@ -94,6 +118,18 @@ function sortItems(items) {
   });
 }
 
+function filterOrdersByDate(orders) {
+  const { start, end } = state.filter;
+  if (!start && !end) return orders;
+  return orders.filter((order) => {
+    const createdAt = parseDate(order.created_at);
+    if (!createdAt) return false;
+    if (start && createdAt < start) return false;
+    if (end && createdAt > end) return false;
+    return true;
+  });
+}
+
 function applyOrdersPayload(payload) {
   const previousUpdatedAt = state.ordersUpdatedAt;
   state.catalog = AppClient.loadCatalog?.() || null;
@@ -111,15 +147,17 @@ function applyOrdersPayload(payload) {
 function renderHistory() {
   ui.content.innerHTML = "";
 
-  if (!state.orders.length) {
-    ui.content.innerHTML = `<div class="historyEmpty">No orders found yet.</div>`;
+  const filteredOrders = filterOrdersByDate(state.orders);
+
+  if (!filteredOrders.length) {
+    ui.content.innerHTML = `<div class="historyEmpty">No orders found for the selected dates.</div>`;
     return;
   }
 
   const itemsByOrder = groupItemsByOrder(state.items);
   const stores = new Map();
 
-  for (const order of state.orders) {
+  for (const order of filteredOrders) {
     const store = String(order.store || "Unknown Store").trim() || "Unknown Store";
     if (!stores.has(store)) stores.set(store, []);
     stores.get(store).push(order);
@@ -239,8 +277,26 @@ function loadFromCache() {
   }
 }
 
+function updateDateFilter() {
+  state.filter.start = parseDateInput(ui.startDate?.value);
+  state.filter.end = parseDateInput(ui.endDate?.value, { endOfDay: true });
+  renderHistory();
+}
+
+function setDefaultDateFilter() {
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setDate(endDate.getDate() - 6);
+  if (ui.startDate) ui.startDate.value = formatDateInputValue(startDate);
+  if (ui.endDate) ui.endDate.value = formatDateInputValue(endDate);
+  updateDateFilter();
+}
+
 function init() {
   loadFromCache();
+  setDefaultDateFilter();
+  ui.startDate?.addEventListener("change", updateDateFilter);
+  ui.endDate?.addEventListener("change", updateDateFilter);
   AppClient.bindRefreshButtons({
     orders: (button) => refreshHistory(button),
   });
