@@ -46,7 +46,7 @@ function doGet(e) {
       return jsonResponse(buildError_(
         "Missing action.",
         "MISSING_ACTION",
-        { expected: ["categories", "products", "listOrders", "health"] },
+        { expected: ["categories", "products", "listOrders", "exportOrderIif", "health"] },
         requestId
       ));
     }
@@ -68,17 +68,18 @@ function doGet(e) {
       const rows = getSheetRows_(CONFIG.sheets.products)
         .filter(row => {
           const sku = getFirstValue_(row, ["sku", "product_sku", "item_sku", "id", "product_id"]);
-          const name = getFirstValue_(row, ["name", "product_name", "item_name", "description"]);
+          const name = getFirstValue_(row, ["item_name", "product_name", "description"]);
           const category = getFirstValue_(row, ["category", "category_name", "department", "dept"]);
           return sku && name && category && isRowActive_(row);
         })
         .map(row => ({
           item_no: String(getFirstValue_(row, ["item_no", "item_number", "item"]) || "").trim(),
           sku: String(getFirstValue_(row, ["sku", "product_sku", "item_sku", "id", "product_id"]) || "").trim(),
-          name: String(getFirstValue_(row, ["name", "product_name", "item_name", "description"]) || "").trim(),
+          name: String(getFirstValue_(row, ["item_name", "product_name", "description"]) || "").trim(),
           category: String(getFirstValue_(row, ["category", "category_name", "department", "dept"]) || "").trim(),
           unit: String(getFirstValue_(row, ["unit", "uom"]) || "").trim(),
           pack_size: String(getFirstValue_(row, ["pack_size", "pack", "case_size", "case_pack"]) || "").trim(),
+          qb_list: String(getFirstValue_(row, ["qb_list", "quickbooks_list", "quickbooks_item", "qb_item"]) || "").trim(),
           sort: Number(getFirstValue_(row, ["sort", "order", "display_order"]) || 9999),
         }))
         .sort((a, b) => a.sort - b.sort);
@@ -112,7 +113,7 @@ function doGet(e) {
 
       const itemsByOrder = new Map();
       itemRows
-        .filter(row => row.order_id && (row.sku || row.name))
+        .filter(row => row.order_id && (row.sku || row.item_name))
         .forEach(row => {
           const orderId = String(row.order_id || "").trim();
           if (!orderId) return;
@@ -120,11 +121,12 @@ function doGet(e) {
             order_id: orderId,
             item_no: String(row.item_no || "").trim(),
             sku: String(row.sku || "").trim(),
-            name: String(row.name || row.sku || "").trim(),
+            name: String(getFirstValue_(row, ["item_name", "product_name", "description"]) || row.sku || "").trim(),
             category: String(row.category || "").trim(),
             unit: String(row.unit || "").trim(),
             pack_size: String(row.pack_size || "").trim(),
             qty: row.qty || "",
+            qb_list: String(row.qb_list || "").trim(),
           };
           if (!itemsByOrder.has(orderId)) itemsByOrder.set(orderId, []);
           itemsByOrder.get(orderId).push(item);
@@ -196,6 +198,24 @@ function doGet(e) {
       return jsonResponse(buildSuccess_({ action: "listOrders", request_id: requestId, orders, items }, requestId));
     }
 
+    if (action === "exportorderiif") {
+      const orderId = String((e && e.parameter && e.parameter.order_id) || "").trim();
+      if (!orderId) {
+        return jsonResponse(buildError_("Missing order_id.", "MISSING_ORDER_ID", null, requestId));
+      }
+
+      const exportPayload = buildOrderIifExport_(orderId);
+      if (exportPayload.error) {
+        return jsonResponse(buildError_(exportPayload.error, "EXPORT_FAILED", exportPayload.details, requestId));
+      }
+      return jsonResponse(buildSuccess_({
+        action: "exportOrderIif",
+        request_id: requestId,
+        order_id: orderId,
+        ...exportPayload,
+      }, requestId));
+    }
+
     if (action === "health") {
       const categories = getSheetRows_(CONFIG.sheets.categories);
       const products = getSheetRows_(CONFIG.sheets.products);
@@ -210,7 +230,7 @@ function doGet(e) {
     return jsonResponse(buildError_(
       `Unknown action: ${action}`,
       "UNKNOWN_ACTION",
-      { received: action, expected: ["categories", "products", "listOrders", "health"] },
+      { received: action, expected: ["categories", "products", "listOrders", "exportOrderIif", "health"] },
       requestId
     ));
   } catch (err) {
@@ -772,6 +792,145 @@ function mergeOrderItemsWithRow_(items, rowItems) {
   });
 
   return merged;
+}
+
+function normalizeMatchKey_(value) {
+  return String(value || "")
+    .replace(/\u00A0/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\s*:\s*/g, ":")
+    .toLowerCase();
+}
+
+function formatIifDate_(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "MM/dd/yyyy");
+  }
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), "MM/dd/yyyy");
+}
+
+function escapeIifField_(value) {
+  return String(value == null ? "" : value)
+    .replace(/[\t\r\n]+/g, " ")
+    .trim();
+}
+
+/**
+ * Builds a QuickBooks IIF Sales Order export for a single order.
+ *
+ * Order headers used:
+ * - order_id (Orders sheet)
+ * - created_at / timestamp / submitted_at / order_date / date (Orders sheet)
+ * - store (Orders sheet)
+ * - Product N / Qty N (Orders sheet columns)
+ *
+ * Product mapping headers used:
+ * - Item Name (Products sheet -> item_name)
+ * - QB List (Products sheet -> qb_list)
+ */
+function buildOrderIifExport_(orderId) {
+  const orders = getSheetRows_(CONFIG.sheets.orders);
+  const products = getSheetRows_(CONFIG.sheets.products);
+  const orderRow = orders.find(row => String(row.order_id || "").trim() === String(orderId || "").trim());
+  if (!orderRow) {
+    return { error: "Order not found.", details: { order_id: orderId } };
+  }
+
+  const items = extractOrderItems_(orderRow)
+    .map(item => ({
+      name: String(item.name || "").trim(),
+      qty: Number(item.qty || 0),
+    }))
+    .filter(item => item.name && Number.isFinite(item.qty) && item.qty > 0);
+
+  if (!items.length) {
+    return { error: "No line items with quantity greater than zero were found for this order." };
+  }
+
+  const productMap = new Map();
+  products.forEach((product) => {
+    const primaryName = String(product.item_name || "").trim();
+    const fallbackName = String(product.name || "").trim();
+    const qbListValue = String(product.qb_list || "").trim();
+    const candidates = [primaryName, fallbackName].filter(Boolean);
+    candidates.forEach((name) => {
+      const normalized = normalizeMatchKey_(name);
+      if (!normalized) return;
+      if (!productMap.has(normalized)) {
+        productMap.set(normalized, product);
+        return;
+      }
+      const existing = productMap.get(normalized);
+      const existingQbList = String(existing?.qb_list || "").trim();
+      if (!existingQbList && qbListValue) {
+        productMap.set(normalized, product);
+      }
+    });
+  });
+
+  const missingItems = [];
+  const mappedItems = items.map((item) => {
+    const normalized = normalizeMatchKey_(item.name);
+    const product = productMap.get(normalized);
+    const qbList = String(product?.qb_list || "").trim();
+    if (!qbList) missingItems.push(item.name);
+    return {
+      name: item.name,
+      qty: item.qty,
+      qb_list: qbList,
+    };
+  });
+
+  const orderDate = formatIifDate_(getFirstValue_(orderRow, [
+    "created_at",
+    "timestamp",
+    "created",
+    "submitted_at",
+    "submitted",
+    "order_date",
+    "date",
+  ]));
+  const customerName = String(orderRow.store || "Unknown Store").trim();
+  const memo = "Imported from Retail Order Portal";
+  const accountName = "Sales Orders";
+
+  const lines = [
+    "!TRNS\tTRNSTYPE\tDATE\tACCNT\tNAME\tDOCNUM\tMEMO",
+    "!SPL\tTRNSTYPE\tDATE\tACCNT\tNAME\tQNTY\tITEM\tMEMO",
+  ];
+  lines.push([
+    "TRNS",
+    "SALES ORDER",
+    orderDate,
+    accountName,
+    customerName,
+    orderId,
+    memo,
+  ].map(escapeIifField_).join("\t"));
+
+  mappedItems.forEach((item) => {
+    const itemName = item.qb_list || item.name;
+    lines.push([
+      "SPL",
+      "SALES ORDER",
+      orderDate,
+      accountName,
+      customerName,
+      String(item.qty || ""),
+      itemName,
+      item.name,
+    ].map(escapeIifField_).join("\t"));
+  });
+
+  lines.push("ENDTRNS");
+
+  return {
+    iif_text: `${lines.join("\n")}\n`,
+    missing_items: missingItems,
+    items: mappedItems,
+  };
 }
 
 function parseJson_(e) {

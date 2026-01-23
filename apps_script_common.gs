@@ -292,3 +292,142 @@ function mergeOrderItemsWithRow_(items, rowItems) {
 
   return merged;
 }
+
+function normalizeMatchKey_(value) {
+  return String(value || "")
+    .replace(/\u00A0/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\s*:\s*/g, ":")
+    .toLowerCase();
+}
+
+function formatIifDate_(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "MM/dd/yyyy");
+  }
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), "MM/dd/yyyy");
+}
+
+function escapeIifField_(value) {
+  return String(value == null ? "" : value)
+    .replace(/[\t\r\n]+/g, " ")
+    .trim();
+}
+
+/**
+ * Builds a QuickBooks IIF Sales Order export for a single order.
+ *
+ * Order headers used:
+ * - order_id (Orders sheet)
+ * - created_at / timestamp / submitted_at / order_date / date (Orders sheet)
+ * - store (Orders sheet)
+ * - Product N / Qty N (Orders sheet columns)
+ *
+ * Product mapping headers used:
+ * - Item Name (Products sheet -> item_name)
+ * - QB List (Products sheet -> qb_list)
+ */
+function buildOrderIifExport_(orderId) {
+  const orders = getSheetRows_(CONFIG.sheets.orders);
+  const products = getSheetRows_(CONFIG.sheets.products);
+  const orderRow = orders.find(row => String(row.order_id || "").trim() === String(orderId || "").trim());
+  if (!orderRow) {
+    return { error: "Order not found.", details: { order_id: orderId } };
+  }
+
+  const items = extractOrderItems_(orderRow)
+    .map(item => ({
+      name: String(item.name || "").trim(),
+      qty: Number(item.qty || 0),
+    }))
+    .filter(item => item.name && Number.isFinite(item.qty) && item.qty > 0);
+
+  if (!items.length) {
+    return { error: "No line items with quantity greater than zero were found for this order." };
+  }
+
+  const productMap = new Map();
+  products.forEach((product) => {
+    const primaryName = String(product.item_name || "").trim();
+    const fallbackName = String(product.name || "").trim();
+    const qbListValue = String(product.qb_list || "").trim();
+    const candidates = [primaryName, fallbackName].filter(Boolean);
+    candidates.forEach((name) => {
+      const normalized = normalizeMatchKey_(name);
+      if (!normalized) return;
+      if (!productMap.has(normalized)) {
+        productMap.set(normalized, product);
+        return;
+      }
+      const existing = productMap.get(normalized);
+      const existingQbList = String(existing?.qb_list || "").trim();
+      if (!existingQbList && qbListValue) {
+        productMap.set(normalized, product);
+      }
+    });
+  });
+
+  const missingItems = [];
+  const mappedItems = items.map((item) => {
+    const normalized = normalizeMatchKey_(item.name);
+    const product = productMap.get(normalized);
+    const qbList = String(product?.qb_list || "").trim();
+    if (!qbList) missingItems.push(item.name);
+    return {
+      name: item.name,
+      qty: item.qty,
+      qb_list: qbList,
+    };
+  });
+
+  const orderDate = formatIifDate_(getFirstValue_(orderRow, [
+    "created_at",
+    "timestamp",
+    "created",
+    "submitted_at",
+    "submitted",
+    "order_date",
+    "date",
+  ]));
+  const customerName = String(orderRow.store || "Unknown Store").trim();
+  const memo = "Imported from Retail Order Portal";
+  const accountName = "Sales Orders";
+
+  const lines = [
+    "!TRNS\tTRNSTYPE\tDATE\tACCNT\tNAME\tDOCNUM\tMEMO",
+    "!SPL\tTRNSTYPE\tDATE\tACCNT\tNAME\tQNTY\tITEM\tMEMO",
+  ];
+  lines.push([
+    "TRNS",
+    "SALES ORDER",
+    orderDate,
+    accountName,
+    customerName,
+    orderId,
+    memo,
+  ].map(escapeIifField_).join("\t"));
+
+  mappedItems.forEach((item) => {
+    const itemName = item.qb_list || item.name;
+    lines.push([
+      "SPL",
+      "SALES ORDER",
+      orderDate,
+      accountName,
+      customerName,
+      String(item.qty || ""),
+      itemName,
+      item.name,
+    ].map(escapeIifField_).join("\t"));
+  });
+
+  lines.push("ENDTRNS");
+
+  return {
+    iif_text: `${lines.join("\n")}\n`,
+    missing_items: missingItems,
+    items: mappedItems,
+  };
+}
