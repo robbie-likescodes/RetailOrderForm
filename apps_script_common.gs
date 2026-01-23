@@ -316,6 +316,22 @@ function escapeIifField_(value) {
     .trim();
 }
 
+function normalizeQbItemName_(qbListValue, fallbackName) {
+  const raw = String(qbListValue || "").trim();
+  if (!raw) return String(fallbackName || "").trim();
+  const parts = raw.split(":");
+  if (parts.length < 2) return raw;
+  const prefix = parts.shift().trim();
+  const rest = parts.join(":").trim();
+  if (!prefix || !rest) return raw;
+  const restLower = rest.toLowerCase();
+  const prefixLower = prefix.toLowerCase();
+  if (restLower.startsWith(`${prefixLower} `)) {
+    return `${prefix}: ${rest.slice(prefix.length).trim()}`;
+  }
+  return raw;
+}
+
 function isUuid_(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     String(value || "").trim()
@@ -458,7 +474,7 @@ function buildOrderIifExport_(orderId) {
   ].map(escapeIifField_).join("\t"));
 
   mappedItems.forEach((item) => {
-    const itemName = item.qb_list || item.name;
+    const itemName = normalizeQbItemName_(item.qb_list, item.name);
     lines.push([
       "SPL",
       "SALESORD",
