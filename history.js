@@ -126,6 +126,7 @@ function normalizeItem(item) {
     sku: normalized.sku || item.sku || "",
     item_no: normalized.item_no || item.item_no || "",
     name: normalized.name || item.name || "",
+    qb_list: normalized.qb_list || item.qb_list || "",
   };
 }
 
@@ -204,6 +205,131 @@ function sortItems(items) {
   });
 }
 
+function formatIifDate(value) {
+  const date = parseDate(value) || new Date();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const year = String(date.getFullYear());
+  return `${month}/${day}/${year}`;
+}
+
+function escapeIifField(value) {
+  return String(value ?? "")
+    .replace(/[\t\r\n]+/g, " ")
+    .trim();
+}
+
+/**
+ * Sample IIF output for a 2-item sales order:
+ * !TRNS	TRNSTYPE	DATE	ACCNT	NAME	DOCNUM	MEMO
+ * !SPL	TRNSTYPE	DATE	ACCNT	NAME	QNTY	ITEM	MEMO
+ * TRNS	SALES ORDER	02/14/2025	Sales Orders	Brewery Store	ORD-1001	Imported from Retail Order Portal
+ * SPL	SALES ORDER	02/14/2025	Sales Orders	Brewery Store	2	Store Milk Products:Whole Milk	Whole Milk
+ * SPL	SALES ORDER	02/14/2025	Sales Orders	Brewery Store	1	Store Milk Products:Skim Milk	Skim Milk
+ * ENDTRNS
+ */
+function buildIifForOrder(order, items) {
+  const orderId = String(order?.order_id || "").trim();
+  const customerName = String(order?.store || "Unknown Store").trim();
+  const orderDate = formatIifDate(order?.created_at);
+  const memo = "Imported from Retail Order Portal";
+  const accountName = "Sales Orders";
+  const headerLines = [
+    "!TRNS\tTRNSTYPE\tDATE\tACCNT\tNAME\tDOCNUM\tMEMO",
+    "!SPL\tTRNSTYPE\tDATE\tACCNT\tNAME\tQNTY\tITEM\tMEMO",
+  ];
+
+  const lines = [...headerLines];
+  lines.push([
+    "TRNS",
+    "SALES ORDER",
+    orderDate,
+    accountName,
+    customerName,
+    orderId,
+    memo,
+  ].map(escapeIifField).join("\t"));
+
+  items.forEach((item) => {
+    lines.push([
+      "SPL",
+      "SALES ORDER",
+      orderDate,
+      accountName,
+      customerName,
+      String(item.qty || ""),
+      item.qb_list || "",
+      item.name || item.sku || "",
+    ].map(escapeIifField).join("\t"));
+  });
+
+  lines.push("ENDTRNS");
+  return `${lines.join("\n")}\n`;
+}
+
+function downloadIifFile(content, filename) {
+  const blob = new Blob([content], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportOrderToIIF(orderId) {
+  const safeOrderId = String(orderId || "").trim();
+  const order = state.orders.find(
+    (entry) => String(entry.order_id || "").trim() === safeOrderId
+  );
+  const itemsByOrder = groupItemsByOrder(state.items);
+  const rawItems = sortItems(itemsByOrder.get(safeOrderId) || []);
+  const items = rawItems
+    .map((item) => ({
+      ...item,
+      qb_list: item.qb_list || "",
+    }))
+    .filter((item) => {
+      const qty = Number(item.qty || 0);
+      return Number.isFinite(qty) && qty > 0;
+    });
+
+  console.log("[History] QuickBooks export selected order", { orderId: safeOrderId, order });
+  console.log("[History] QuickBooks export line items", items);
+
+  if (!order) {
+    showError("Unable to export. Order not found.");
+    AppClient.showToast("QuickBooks export failed. Order not found.", "error");
+    return;
+  }
+
+  if (!items.length) {
+    showError("No line items with quantity greater than zero were found for this order.");
+    AppClient.showToast("QuickBooks export failed. No items to export.", "warning");
+    return;
+  }
+
+  const missingQbList = items.filter((item) => !String(item.qb_list || "").trim());
+  if (missingQbList.length) {
+    console.log("[History] QuickBooks export missing QB List items", missingQbList);
+    const missingNames = missingQbList.map((item) => item.name || item.sku || "Item").join(", ");
+    showError(
+      `Cannot export this order. Missing QB List mapping for: ${missingNames}. ` +
+        "Add QB List mapping in the Retail Order Form Database sheet."
+    );
+    AppClient.showToast("QuickBooks export failed. Missing QB List mapping.", "error");
+    return;
+  }
+
+  showError("");
+  const iifText = buildIifForOrder(order, items);
+  const safeFileName = safeOrderId ? `sales-order-${safeOrderId}.iif` : `sales-order-${Date.now()}.iif`;
+  downloadIifFile(iifText, safeFileName);
+  AppClient.showToast("QuickBooks IIF downloaded.", "success");
+}
+
 function filterOrdersByDate(orders) {
   const { start, end } = state.filter;
   if (!start && !end) return orders;
@@ -270,21 +396,39 @@ function renderHistory() {
     ordersWrap.className = "historyOrders";
 
     storeOrders.forEach((order) => {
-      const orderId = String(order.order_id || "").trim() || "(no id)";
+      const orderId = String(order.order_id || "").trim();
       const createdAt = formatDate(order.created_at);
       const orderDetails = document.createElement("details");
       orderDetails.className = "historyOrder";
 
       const orderSummary = document.createElement("summary");
-      orderSummary.innerHTML = `
-        <div>
-          <div class="historyOrder__title">Order from: ${escapeHtml(createdAt)} · ${escapeHtml(storeName)}</div>
-        </div>
-        <div class="historyOrder__metaSummary">
-          <span>${escapeHtml(String(order.item_count || ""))} items</span>
-          <span>${escapeHtml(String(order.total_qty || ""))} qty</span>
-        </div>
+      const summaryDetails = document.createElement("div");
+      summaryDetails.innerHTML = `
+        <div class="historyOrder__title">Order from: ${escapeHtml(createdAt)} · ${escapeHtml(storeName)}</div>
       `;
+
+      const summaryActions = document.createElement("div");
+      summaryActions.className = "historyOrder__summaryActions";
+
+      const summaryMeta = document.createElement("div");
+      summaryMeta.className = "historyOrder__metaSummary";
+      summaryMeta.innerHTML = `
+        <span>${escapeHtml(String(order.item_count || ""))} items</span>
+        <span>${escapeHtml(String(order.total_qty || ""))} qty</span>
+      `;
+
+      const qbButton = document.createElement("button");
+      qbButton.type = "button";
+      qbButton.className = "btn btn--small historyOrder__qbBtn";
+      qbButton.textContent = "Import to QuickBooks";
+      qbButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        exportOrderToIIF(orderId);
+      });
+
+      summaryActions.append(summaryMeta, qbButton);
+      orderSummary.append(summaryDetails, summaryActions);
       orderDetails.appendChild(orderSummary);
 
       const orderBody = document.createElement("div");
