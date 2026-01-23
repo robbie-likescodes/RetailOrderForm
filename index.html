@@ -134,67 +134,145 @@
         </div>
       </div>
 
-      <div class="reports__section">
-        <h3>Side-by-side store comparison</h3>
-        <p class="muted reports__hint">Compare stores across quick timeframes (last month, last quarter, last year) plus a custom range.</p>
-        <div class="reports__filters reports__filters--compact">
-          <label class="field field--stores">
-            <span>Stores</span>
-            <div id="compareStores" class="multiselect" data-placeholder="Select stores">
-              <button type="button" class="multiselect__toggle" aria-haspopup="listbox" aria-expanded="false">
-                Select stores
-              </button>
-              <div class="multiselect__menu" role="listbox" aria-multiselectable="true"></div>
-            </div>
-            <small class="field__help">Select one or more stores.</small>
-          </label>
-          <label class="field field--scope">
-            <span>Compare by</span>
-            <select id="compareScope">
-              <option value="product">Product</option>
-              <option value="category">Category</option>
-            </select>
-          </label>
-          <label class="field field--product" id="compareProductField">
-            <span>Product</span>
-            <select id="compareProduct">
-              <option value="">Select a product</option>
-            </select>
-          </label>
-          <label class="field field--category" id="compareCategoryField" hidden>
-            <span>Category</span>
-            <select id="compareCategory">
-              <option value="">Select a category</option>
-            </select>
-          </label>
-          <label class="field field--start">
-            <span>Start date &amp; time</span>
-            <input id="compareStart" type="datetime-local" />
-          </label>
-          <label class="field field--end">
-            <span>End date &amp; time</span>
-            <input id="compareEnd" type="datetime-local" />
-          </label>
-          <label class="field field--sort">
-            <span>Sort</span>
-            <select id="compareSort">
-              <option value="qty-desc">Qty (high to low)</option>
-              <option value="qty-asc">Qty (low to high)</option>
-              <option value="store-asc">Store (A → Z)</option>
-              <option value="store-desc">Store (Z → A)</option>
-            </select>
-          </label>
+      <div class="reports__tabs" role="tablist" aria-label="Report modes">
+        <button class="btn btn--tab is-active" id="reportModeVolume" type="button" role="tab" aria-selected="true">Volume Report</button>
+        <button class="btn btn--tab" id="reportModeMissing" type="button" role="tab" aria-selected="false">Missing Inventory Report</button>
+      </div>
+
+      <div class="reports__panel" id="reportVolumePanel">
+        <div class="reports__section">
+          <h3>Side-by-side store comparison</h3>
+          <p class="muted reports__hint">Compare stores across quick timeframes (last month, last quarter, last year) plus a custom range.</p>
+          <div class="reports__filters reports__filters--compact">
+            <label class="field field--stores">
+              <span>Stores</span>
+              <div id="compareStores" class="multiselect" data-placeholder="Select stores">
+                <button type="button" class="multiselect__toggle" aria-haspopup="listbox" aria-expanded="false">
+                  Select stores
+                </button>
+                <div class="multiselect__menu" role="listbox" aria-multiselectable="true"></div>
+              </div>
+              <small class="field__help">Select one or more stores.</small>
+            </label>
+            <label class="field field--scope">
+              <span>Compare by</span>
+              <select id="compareScope">
+                <option value="product">Product</option>
+                <option value="category">Category</option>
+              </select>
+            </label>
+            <label class="field field--product" id="compareProductField">
+              <span>Product</span>
+              <select id="compareProduct">
+                <option value="">Select a product</option>
+              </select>
+            </label>
+            <label class="field field--category" id="compareCategoryField" hidden>
+              <span>Category</span>
+              <select id="compareCategory">
+                <option value="">Select a category</option>
+              </select>
+            </label>
+            <label class="field field--start">
+              <span>Start date &amp; time</span>
+              <input id="compareStart" type="datetime-local" />
+            </label>
+            <label class="field field--end">
+              <span>End date &amp; time</span>
+              <input id="compareEnd" type="datetime-local" />
+            </label>
+            <label class="field field--sort">
+              <span>Sort</span>
+              <select id="compareSort">
+                <option value="qty-desc">Qty (high to low)</option>
+                <option value="qty-asc">Qty (low to high)</option>
+                <option value="store-asc">Store (A → Z)</option>
+                <option value="store-desc">Store (Z → A)</option>
+              </select>
+            </label>
+          </div>
+          <div class="reports__actions">
+            <button class="btn btn--big btn--full btn--go" id="compareGo" type="button">GO</button>
+          </div>
+          <div class="reports__subnote" id="compareRangeHint"></div>
+          <div class="tableWrap tableWrap--wide">
+            <table class="table table--compare">
+              <thead id="compareHead"></thead>
+              <tbody id="compareBody"></tbody>
+            </table>
+            <div class="empty" id="compareEmpty" hidden>Select a product or category to compare stores.</div>
+          </div>
         </div>
-        <div class="reports__actions">
-          <button class="btn btn--big btn--full btn--go" id="compareGo" type="button">GO</button>
-        </div>
-        <div class="reports__subnote" id="compareRangeHint"></div>
-        <div class="tableWrap tableWrap--wide">
-          <table class="table table--compare">
-            <thead id="compareHead"></thead>
-            <tbody id="compareBody"></tbody>
-          </table>
-          <div class="empty" id="compareEmpty" hidden>Select a product or category to compare stores.</div>
+      </div>
+
+      <div class="reports__panel" id="reportMissingPanel" hidden>
+        <div class="reports__section">
+          <h3>Missing inventory totals</h3>
+          <p class="muted reports__hint">See items that were unavailable or partially collected across stores in a date range.</p>
+          <div class="reports__filters reports__filters--compact">
+            <label class="field field--scope">
+              <span>Filter by</span>
+              <select id="missingScope">
+                <option value="product">Item</option>
+                <option value="category">Category</option>
+              </select>
+            </label>
+            <label class="field field--product" id="missingProductField">
+              <span>Item</span>
+              <select id="missingProduct">
+                <option value="">Select an item</option>
+              </select>
+            </label>
+            <label class="field field--category" id="missingCategoryField" hidden>
+              <span>Category</span>
+              <select id="missingCategory">
+                <option value="">Select a category</option>
+              </select>
+            </label>
+            <label class="field field--start">
+              <span>Start date &amp; time</span>
+              <input id="missingStart" type="datetime-local" />
+            </label>
+            <label class="field field--end">
+              <span>End date &amp; time</span>
+              <input id="missingEnd" type="datetime-local" />
+            </label>
+            <label class="field field--sort">
+              <span>Sort</span>
+              <select id="missingSort">
+                <option value="missing-desc">Missing qty (high to low)</option>
+                <option value="missing-asc">Missing qty (low to high)</option>
+                <option value="store-asc">Store (A → Z)</option>
+                <option value="store-desc">Store (Z → A)</option>
+                <option value="item-asc">Item (A → Z)</option>
+              </select>
+            </label>
+          </div>
+          <div class="reports__actions">
+            <button class="btn btn--big btn--full btn--go" id="missingGo" type="button">GO</button>
+          </div>
+          <div class="reports__subnote" id="missingRangeHint"></div>
+
+          <h4 class="reports__subhead" id="missingStoreTitle">Missing totals by store</h4>
+          <div class="tableWrap tableWrap--wide" id="missingStoreWrap">
+            <table class="table">
+              <thead id="missingStoreHead"></thead>
+              <tbody id="missingStoreBody"></tbody>
+            </table>
+            <div class="empty" id="missingStoreEmpty" hidden>Select an item or category to see per-store missing totals.</div>
+          </div>
+          <div class="reports__subnote" id="missingGrandTotalWrap" hidden>
+            Grand total missing: <strong id="missingGrandTotal">0</strong>
+          </div>
+
+          <h4 class="reports__subhead" id="missingItemsTitle" hidden>Top Missing Items</h4>
+          <div class="tableWrap tableWrap--wide" id="missingItemsWrap" hidden>
+            <table class="table">
+              <thead id="missingItemsHead"></thead>
+              <tbody id="missingItemsBody"></tbody>
+            </table>
+            <div class="empty" id="missingItemsEmpty" hidden>No missing inventory found in this range.</div>
+          </div>
         </div>
       </div>
     </section>
