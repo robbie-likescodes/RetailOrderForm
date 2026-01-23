@@ -549,10 +549,6 @@ function renderOrders() {
           pulledButton.className = "itemRow__action itemRow__action--pulled";
           pulledButton.textContent = "Pulled";
 
-          const notPulledButton = document.createElement("button");
-          notPulledButton.type = "button";
-          notPulledButton.className = "itemRow__action itemRow__action--notPulled";
-          notPulledButton.textContent = "Not Pulled";
 
           const unavailableToggle = document.createElement("label");
           unavailableToggle.className = "itemRow__action itemRow__action--unavailable itemRow__checkbox";
@@ -570,7 +566,6 @@ function renderOrders() {
           unavailableToggle.appendChild(unavailableText);
 
           quickActions.appendChild(pulledButton);
-          quickActions.appendChild(notPulledButton);
           quickActions.appendChild(unavailableToggle);
 
           itemControls.appendChild(select);
@@ -590,10 +585,6 @@ function renderOrders() {
 
           pulledButton.addEventListener("click", () => {
             applyStatus("Pulled", progress.orderedQty);
-          });
-
-          notPulledButton.addEventListener("click", () => {
-            applyStatus("Not Pulled", 0);
           });
 
           unavailableInput.addEventListener("change", () => {
