@@ -20,11 +20,14 @@ const state = {
   items: [],
   catalog: null,
   ordersUpdatedAt: "",
+  deliveryState: {},
   filter: {
     start: null,
     end: null,
   },
 };
+
+const DELIVERY_STATE_KEY = "orderportal_delivery_state_v1";
 
 function setText(el, txt) {
   if (!el) return;
@@ -76,6 +79,89 @@ function parseDateInput(value, { endOfDay = false } = {}) {
     return new Date(year, month - 1, day, 23, 59, 59, 999);
   }
   return new Date(year, month - 1, day, 0, 0, 0, 0);
+}
+
+function normalizeKey(key) {
+  return String(key || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function normalizeRowKeys(row) {
+  if (!row || typeof row !== "object") return {};
+  return Object.keys(row).reduce((acc, key) => {
+    const normalized = normalizeKey(key);
+    if (normalized) acc[normalized] = row[key];
+    return acc;
+  }, {});
+}
+
+function loadDeliveryState() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(DELIVERY_STATE_KEY) || "{}");
+    state.deliveryState = raw && typeof raw === "object" ? raw : {};
+    Object.values(state.deliveryState).forEach((entry) => {
+      if (!entry || typeof entry !== "object" || !entry.items) return;
+      Object.keys(entry.items).forEach((key) => {
+        const value = entry.items[key];
+        if (typeof value === "string") {
+          if (value === "pulled") {
+            entry.items[key] = { status: "Pulled" };
+          } else if (value === "unavailable") {
+            entry.items[key] = { status: "Unavailable", pulledQty: 0 };
+          }
+        }
+      });
+    });
+  } catch (err) {
+    state.deliveryState = {};
+  }
+}
+
+function normalizeItem(item) {
+  const normalized = normalizeRowKeys(item);
+  return {
+    sku: normalized.sku || item.sku || "",
+    item_no: normalized.item_no || item.item_no || "",
+    name: normalized.name || item.name || "",
+  };
+}
+
+function itemKey(item) {
+  const normalized = normalizeItem(item);
+  return normalized.sku || normalized.item_no || normalized.name;
+}
+
+function parsePulledQtyFromStatus(status, orderedQty) {
+  if (!status) return null;
+  const normalized = String(status).trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.startsWith("unavailable")) return 0;
+  if (normalized.startsWith("not pulled")) return 0;
+  if (normalized.startsWith("pulled")) return orderedQty;
+  const match = normalized.match(/partially collected\s+(\d+)\s+of\s+(\d+)/);
+  if (match) {
+    const pulled = Number(match[1]);
+    if (Number.isFinite(pulled)) return pulled;
+  }
+  return null;
+}
+
+function getDeliveredQty(orderId, item) {
+  const key = itemKey(item);
+  if (!key) return 0;
+  const orderState = state.deliveryState[orderId] || state.deliveryState[String(orderId).trim()];
+  const itemState = orderState?.items?.[key];
+  if (!itemState) return 0;
+  const orderedQty = Number(item.qty || 0) || 0;
+  const overridePulled = itemState.pulledQty;
+  const statusLabel = itemState.status || "";
+  const parsedPulled = parsePulledQtyFromStatus(statusLabel, orderedQty);
+  if (Number.isFinite(overridePulled)) return overridePulled;
+  if (Number.isFinite(parsedPulled)) return parsedPulled;
+  return 0;
 }
 
 function groupItemsByOrder(items) {
@@ -141,11 +227,13 @@ function applyOrdersPayload(payload) {
   if (updatedAt) {
     setText(ui.updated, `Orders: ${new Date(updatedAt).toLocaleString()}`);
   }
+  loadDeliveryState();
   renderHistory();
 }
 
 function renderHistory() {
   ui.content.innerHTML = "";
+  loadDeliveryState();
 
   const filteredOrders = filterOrdersByDate(state.orders);
 
@@ -217,7 +305,22 @@ function renderHistory() {
       if (!items.length) {
         itemsWrap.innerHTML = `<div class="historyEmpty">No items recorded for this order.</div>`;
       } else {
+        const headerRow = document.createElement("div");
+        headerRow.className = "historyItem historyItem--header";
+        headerRow.innerHTML = `
+          <div class="historyItem__name">Item</div>
+          <div class="historyItem__qtyGroup">
+            <div class="historyItem__qtyColumn">
+              <div class="historyItem__qtyLabel">Ordered</div>
+            </div>
+            <div class="historyItem__qtyColumn">
+              <div class="historyItem__qtyLabel">Delivered</div>
+            </div>
+          </div>
+        `;
+        itemsWrap.appendChild(headerRow);
         items.forEach((item) => {
+          const deliveredQty = getDeliveredQty(orderId, item);
           const itemDiv = document.createElement("div");
           itemDiv.className = "historyItem";
           itemDiv.innerHTML = `
@@ -227,7 +330,14 @@ function renderHistory() {
                 ${escapeHtml([item.item_no, item.category, item.unit, item.pack_size].filter(Boolean).join(" • "))}
               </div>
             </div>
-            <div class="historyItem__qty">${escapeHtml(String(item.qty || ""))}</div>
+            <div class="historyItem__qtyGroup">
+              <div class="historyItem__qtyColumn">
+                <div class="historyItem__qty historyItem__qty--ordered">${escapeHtml(String(item.qty || ""))}</div>
+              </div>
+              <div class="historyItem__qtyColumn">
+                <div class="historyItem__qty historyItem__qty--delivered">${escapeHtml(String(deliveredQty))}</div>
+              </div>
+            </div>
           `;
           itemsWrap.appendChild(itemDiv);
         });
