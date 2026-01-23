@@ -24,6 +24,12 @@
         <button class="btn btn--ghost" id="deliveryRefreshBtn" data-refresh="orders" type="button" aria-label="Refresh drivers from Google Sheets" title="Refresh drivers from Google Sheets">Refresh Orders</button>
       </div>
     </div>
+    <div class="topbar__tabs" id="deliveryStatusTabs" role="tablist" aria-label="Order status filters">
+      <button class="btn btn--ghost btn--tab" type="button" data-status="Not Started" role="tab" aria-selected="false">Not Started</button>
+      <button class="btn btn--ghost btn--tab" type="button" data-status="In Progress" role="tab" aria-selected="false">In Progress</button>
+      <button class="btn btn--ghost btn--tab" type="button" data-status="Complete" role="tab" aria-selected="false">Complete</button>
+      <button class="btn btn--ghost btn--tab is-active" type="button" data-status="All" role="tab" aria-selected="true">All</button>
+    </div>
   </header>
 
   <main class="container">
