@@ -137,6 +137,7 @@ const ui = {
   compareStart: $("compareStart"),
   compareEnd: $("compareEnd"),
   compareSort: $("compareSort"),
+  compareGo: $("compareGo"),
   compareHead: $("compareHead"),
   compareBody: $("compareBody"),
   compareEmpty: $("compareEmpty"),
@@ -1431,7 +1432,8 @@ function itemMatchesCategory(item, categoryKey) {
 }
 
 function updateCompareScopeUI() {
-  const isCategory = state.reports.compareScope === "category";
+  const currentScope = ui.compareScope?.value || state.reports.compareScope;
+  const isCategory = currentScope === "category";
   setHidden(ui.compareProductField, isCategory);
   setHidden(ui.compareCategoryField, !isCategory);
 }
@@ -1458,7 +1460,6 @@ function sortStores(stores, totals, sortKey) {
 
 function renderReports() {
   if (!ui.reportsPanel) return;
-  syncReportFiltersFromInputs();
   updateCompareScopeUI();
 
   const allStores = getStoreList();
@@ -1643,6 +1644,11 @@ function renderReports() {
   if (ui.reportTopStore && !compareValid) {
     ui.reportTopStore.textContent = "—";
   }
+}
+
+function applyReportFilters() {
+  syncReportFiltersFromInputs();
+  renderReports();
 }
 
 function recordOrderHistory(payload, orderId) {
@@ -1853,11 +1859,9 @@ function wireEvents() {
   ui.email?.addEventListener("input", markDirty);
   ui.notes?.addEventListener("input", markDirty);
 
-  const rerenderReports = () => renderReports();
-  ui.compareScope?.addEventListener("change", rerenderReports);
+  ui.compareScope?.addEventListener("change", updateCompareScopeUI);
   ui.compareStores?.addEventListener("change", () => {
     updateMultiSelectToggle(ui.compareStores);
-    rerenderReports();
   });
   ui.compareStores?.addEventListener("click", (event) => {
     const toggle = event.target.closest(".multiselect__toggle");
@@ -1870,11 +1874,7 @@ function wireEvents() {
     if (ui.compareStores.contains(event.target)) return;
     setMultiSelectOpen(ui.compareStores, false);
   });
-  ui.compareProduct?.addEventListener("change", rerenderReports);
-  ui.compareCategory?.addEventListener("change", rerenderReports);
-  ui.compareStart?.addEventListener("change", rerenderReports);
-  ui.compareEnd?.addEventListener("change", rerenderReports);
-  ui.compareSort?.addEventListener("change", rerenderReports);
+  ui.compareGo?.addEventListener("click", applyReportFilters);
 
   // Optional: category jump toggle
   ui.categoryJumpBtn?.addEventListener("click", () => {
