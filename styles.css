@@ -248,8 +248,8 @@ body{
 }
 
 .reports__collapsibleToggle{
-  position: sticky;
-  bottom: 12px;
+  position: static;
+  bottom: auto;
   width: 100%;
   justify-content: space-between;
   background: #ffffff;
