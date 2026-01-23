@@ -28,6 +28,16 @@
 
   <main class="container">
     <section class="card">
+      <div class="historyFilters">
+        <label class="field">
+          <span>Start date</span>
+          <input type="date" id="historyStartDate" />
+        </label>
+        <label class="field">
+          <span>End date</span>
+          <input type="date" id="historyEndDate" />
+        </label>
+      </div>
       <div class="historyStatus" id="historyStatus">Pulling the most recent orders…</div>
       <div class="error" id="historyError" hidden></div>
       <div class="historyContent" id="historyContent"></div>

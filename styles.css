@@ -237,6 +237,14 @@ body{
   margin-bottom: 14px;
 }
 
+.historyFilters{
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  align-items: end;
+  margin-bottom: 14px;
+}
+
 .historyContent{
   display: grid;
   gap: 14px;
