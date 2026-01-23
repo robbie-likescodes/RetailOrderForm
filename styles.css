@@ -385,6 +385,13 @@ body{
   padding: 12px 14px;
 }
 
+.historyOrder__summaryActions{
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
 .historyOrder summary::-webkit-details-marker{
   display: none;
 }
@@ -428,6 +435,7 @@ body{
   border: 1px solid rgba(79, 70, 229, 0.22);
   flex-shrink: 0;
 }
+
 
 .historyOrder__body{
   padding: 0 14px 14px;
@@ -1645,6 +1653,23 @@ textarea:focus{
 
 .toast--warning{
   background: #9a3412;
+}
+
+.historyOrder__qbBtn{
+  flex: 0 0 auto;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  background: #f1f5f9;
+  color: var(--primary-strong);
+  box-shadow: none;
+}
+
+.historyOrder__qbBtn:hover{
+  border-color: rgba(79, 70, 229, 0.4);
+  color: var(--primary);
 }
 
 .btn--loading{

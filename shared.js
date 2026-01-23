@@ -141,6 +141,7 @@
       category: String(safe.category || "").trim(),
       unit: String(safe.unit || "").trim(),
       pack_size: String(safe.pack_size || "").trim(),
+      qb_list: String(safe.qb_list || "").trim(),
       sort: Number(safe.sort || 9999),
     };
   }
@@ -483,6 +484,7 @@
         category: match?.category || "",
         unit: item.unit || match?.unit || "",
         pack_size: item.pack_size || match?.pack_size || "",
+        qb_list: item.qb_list || match?.qb_list || "",
       };
     });
   }
