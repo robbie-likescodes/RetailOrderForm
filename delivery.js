@@ -564,7 +564,7 @@ function renderOrders() {
           pulledInput.setAttribute("aria-label", `Mark ${item.name || "item"} pulled`);
 
           const pulledText = document.createElement("span");
-          pulledText.textContent = "Pulled";
+          pulledText.textContent = `Collected All ${progress.orderedQty}`;
 
           pulledToggle.appendChild(pulledInput);
           pulledToggle.appendChild(pulledText);
