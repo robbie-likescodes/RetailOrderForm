@@ -463,6 +463,13 @@ body{
   margin-top: 3px;
 }
 
+.historyItem__unit{
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
 .historyItem__metaSeparator{
   color: var(--muted);
   padding: 0 2px;
