@@ -688,7 +688,7 @@ select.select--multi option{
   padding: 12px 12px 8px;
   border-radius: 16px;
   border: 1px solid rgba(79, 70, 229, 0.25);
-  background: linear-gradient(180deg, rgba(79, 70, 229, 0.08), rgba(79, 70, 229, 0.02));
+  background: #ffffff;
   box-shadow: 0 16px 30px rgba(15, 23, 42, 0.12);
   max-height: 220px;
   overflow: auto;
@@ -706,6 +706,7 @@ select.select--multi option{
   gap: 8px;
   padding: 6px 4px;
   border-radius: 10px;
+  color: var(--text);
 }
 
 .multiselect__option:hover{
