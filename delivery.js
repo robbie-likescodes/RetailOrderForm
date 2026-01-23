@@ -163,7 +163,8 @@ function attachItemsToOrders(ordersList, itemsList) {
   return ordersList.map((order) => {
     const orderId = String(order.order_id || order.id || "").trim();
     const items = order.items || itemsByOrder.get(orderId) || [];
-    const enrichedItems = AppClient.enrichItemsWithCatalog(items, AppClient.loadCatalog?.());
+    const enrichedItems = AppClient.enrichItemsWithCatalog(items, AppClient.loadCatalog?.())
+      .map((item) => ({ ...item, order_id: item.order_id || orderId }));
     return { ...order, items: enrichedItems };
   });
 }
@@ -368,7 +369,7 @@ function renderOrders() {
   }
 
   const itemsByOrder = groupItemsByOrder(
-    orders.flatMap((order) => Array.isArray(order.items) ? order.items : [])
+    normalizedOrders.flatMap((order) => Array.isArray(order.items) ? order.items : [])
   );
 
   const stores = new Map();
