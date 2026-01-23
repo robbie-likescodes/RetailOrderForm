@@ -162,7 +162,9 @@ function attachItemsToOrders(ordersList, itemsList) {
 
   return ordersList.map((order) => {
     const orderId = String(order.order_id || order.id || "").trim();
-    const items = order.items || itemsByOrder.get(orderId) || [];
+    const items = Array.isArray(order.items) && order.items.length
+      ? order.items
+      : (itemsByOrder.get(orderId) || []);
     const enrichedItems = AppClient.enrichItemsWithCatalog(items, AppClient.loadCatalog?.())
       .map((item) => ({ ...item, order_id: item.order_id || orderId }));
     return { ...order, items: enrichedItems };
