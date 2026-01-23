@@ -315,14 +315,14 @@ function getItemProgress(order, item) {
 function deriveOrderStatusFromItems(order, fallbackStatus) {
   const items = Array.isArray(order.items) ? order.items.filter(isVisibleLineItem) : [];
   if (!items.length) return fallbackStatus || ORDER_STATUS.NOT_STARTED;
-  let pulledCount = 0;
+  let fulfilledCount = 0;
   let progressedCount = 0;
   items.forEach((item) => {
     const progress = getItemProgress(order, item);
-    if (["pulled", "partial"].includes(progress.state)) progressedCount += 1;
-    if (progress.state === "pulled") pulledCount += 1;
+    if (progress.state !== "not_pulled") progressedCount += 1;
+    if (["pulled", "partial", "unavailable"].includes(progress.state)) fulfilledCount += 1;
   });
-  if (pulledCount === items.length) return ORDER_STATUS.COMPLETE;
+  if (fulfilledCount === items.length) return ORDER_STATUS.COMPLETE;
   if (progressedCount === 0) return ORDER_STATUS.NOT_STARTED;
   return ORDER_STATUS.IN_PROGRESS;
 }
@@ -516,6 +516,7 @@ function renderOrders() {
           const itemMeta = [item.item_no, item.unit, item.pack_size].filter(Boolean).map(escapeHtml).join(" • ");
 
           const itemInfo = document.createElement("div");
+          const unitLabel = item.unit ? `Unit: ${item.unit}` : "";
           itemInfo.innerHTML = `
             <div class="historyItem__name">${escapeHtml(item.name || item.sku || "Item")}</div>
             <div class="historyItem__meta">
@@ -553,14 +554,24 @@ function renderOrders() {
           notPulledButton.className = "itemRow__action itemRow__action--notPulled";
           notPulledButton.textContent = "Not Pulled";
 
-          const unavailableButton = document.createElement("button");
-          unavailableButton.type = "button";
-          unavailableButton.className = "itemRow__action itemRow__action--unavailable";
-          unavailableButton.textContent = "Unavailable";
+          const unavailableToggle = document.createElement("label");
+          unavailableToggle.className = "itemRow__action itemRow__action--unavailable itemRow__checkbox";
+
+          const unavailableInput = document.createElement("input");
+          unavailableInput.type = "checkbox";
+          unavailableInput.className = "itemRow__checkboxInput";
+          unavailableInput.checked = progress.state === "unavailable";
+          unavailableInput.setAttribute("aria-label", `Mark ${item.name || "item"} unavailable`);
+
+          const unavailableText = document.createElement("span");
+          unavailableText.textContent = "Unavailable";
+
+          unavailableToggle.appendChild(unavailableInput);
+          unavailableToggle.appendChild(unavailableText);
 
           quickActions.appendChild(pulledButton);
           quickActions.appendChild(notPulledButton);
-          quickActions.appendChild(unavailableButton);
+          quickActions.appendChild(unavailableToggle);
 
           itemControls.appendChild(select);
           itemControls.appendChild(quickActions);
@@ -585,8 +596,12 @@ function renderOrders() {
             applyStatus("Not Pulled", 0);
           });
 
-          unavailableButton.addEventListener("click", () => {
-            applyStatus("Unavailable", 0);
+          unavailableInput.addEventListener("change", () => {
+            if (unavailableInput.checked) {
+              applyStatus("Unavailable", 0);
+            } else {
+              applyStatus("Not Pulled", 0);
+            }
           });
 
           itemRow.appendChild(itemInfo);

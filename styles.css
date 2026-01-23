@@ -1253,6 +1253,17 @@ textarea:focus{
   color: #b91c1c;
 }
 
+.itemRow__checkbox{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.itemRow__checkboxInput{
+  margin: 0;
+  accent-color: #dc2626;
+}
+
 .deliveryFooter{
   margin-top: 16px;
   display: flex;
