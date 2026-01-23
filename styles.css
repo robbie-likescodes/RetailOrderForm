@@ -755,8 +755,10 @@ select.select--multi option{
   }
 }
 
+input[type="date"],
 input[type="datetime-local"]{
   min-width: 0;
+  max-width: 100%;
 }
 
 textarea{ resize: vertical; }
