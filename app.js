@@ -37,7 +37,7 @@ const CONFIG = {
   REPORT_REFRESH_MS: 1000 * 60 * 5,
 
   // If your stores are fixed, put them here (optional). If empty, free-text store entry.
-  STORES: [], // e.g. ["Boniface", "Huffman", "Muldoon", "Lake Otis", "Camelot"]
+  STORES: ["MULDOON", "CAMELOT", "BONIFACE", "HUFFMAN", "LAKE OTIS"],
 };
 
 // =========================
@@ -1854,7 +1854,7 @@ function wireEvents() {
 
   // Mark dirty if meta changes
   const markDirty = () => { state.dirty = true; syncMetaFromInputs(); };
-  ui.store?.addEventListener("input", markDirty);
+  ui.store?.addEventListener("change", markDirty);
   ui.requestedDate?.addEventListener("change", markDirty);
   ui.placedBy?.addEventListener("input", markDirty);
   ui.email?.addEventListener("input", markDirty);
