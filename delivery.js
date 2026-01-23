@@ -360,7 +360,10 @@ function renderOrders() {
 
   const normalizedOrders = orders
     .map(normalizeOrder)
-    .filter((order) => !order.requested_date || order.requested_date === today || order.created_date === today);
+    .filter((order) => {
+      const createdDate = order.created_date || normalizeDateValue(order.created_at);
+      return createdDate === today;
+    });
 
   if (!normalizedOrders.length) {
     const empty = document.createElement("div");
