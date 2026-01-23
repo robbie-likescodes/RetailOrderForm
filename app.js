@@ -127,6 +127,10 @@ const ui = {
   reportStatus: $("reportStatus"),
   reportTopStore: $("reportTopStore"),
   refreshReportsBtn: $("refreshReportsBtn"),
+  reportModeVolume: $("reportModeVolume"),
+  reportModeMissing: $("reportModeMissing"),
+  reportVolumePanel: $("reportVolumePanel"),
+  reportMissingPanel: $("reportMissingPanel"),
   compareScope: $("compareScope"),
   compareStores: $("compareStores"),
   compareProduct: $("compareProduct"),
@@ -141,6 +145,28 @@ const ui = {
   compareBody: $("compareBody"),
   compareEmpty: $("compareEmpty"),
   compareRangeHint: $("compareRangeHint"),
+  missingScope: $("missingScope"),
+  missingProduct: $("missingProduct"),
+  missingCategory: $("missingCategory"),
+  missingProductField: $("missingProductField"),
+  missingCategoryField: $("missingCategoryField"),
+  missingStart: $("missingStart"),
+  missingEnd: $("missingEnd"),
+  missingSort: $("missingSort"),
+  missingGo: $("missingGo"),
+  missingStoreTitle: $("missingStoreTitle"),
+  missingStoreWrap: $("missingStoreWrap"),
+  missingStoreHead: $("missingStoreHead"),
+  missingStoreBody: $("missingStoreBody"),
+  missingStoreEmpty: $("missingStoreEmpty"),
+  missingItemsTitle: $("missingItemsTitle"),
+  missingItemsWrap: $("missingItemsWrap"),
+  missingItemsHead: $("missingItemsHead"),
+  missingItemsBody: $("missingItemsBody"),
+  missingItemsEmpty: $("missingItemsEmpty"),
+  missingRangeHint: $("missingRangeHint"),
+  missingGrandTotal: $("missingGrandTotal"),
+  missingGrandTotalWrap: $("missingGrandTotalWrap"),
 };
 
 // =========================
@@ -166,6 +192,7 @@ const state = {
   categoryIndex: new Map(), // category -> {start, end}
   orders: [],
   reports: {
+    mode: "volume",
     compareStores: [],
     compareProduct: "",
     compareCategory: "",
@@ -173,6 +200,12 @@ const state = {
     compareStart: "",
     compareEnd: "",
     compareSort: "qty-desc",
+    missingScope: "product",
+    missingProduct: "",
+    missingCategory: "",
+    missingStart: "",
+    missingEnd: "",
+    missingSort: "missing-desc",
   },
   activeTab: "order",
   submitting: false,
@@ -264,6 +297,7 @@ function normalizeOrderRows(rows) {
           unit: normalizedItem.unit || item.unit || "",
           pack_size: normalizedItem.pack_size || item.pack_size || "",
           qty: Number(normalizedItem.qty ?? item.qty ?? 0) || 0,
+          status: normalizedItem.status || item.status || "",
         };
       })
       : [];
@@ -1266,6 +1300,7 @@ function setActiveTab(tab) {
       setReportStatus("History: not loaded");
     }
     updateReportOptions();
+    setReportMode(state.reports.mode);
     renderReports();
     if (!state.orders.length || isReportDataStale()) {
       refreshReports();
@@ -1392,6 +1427,14 @@ function getCategoryMap() {
   return map;
 }
 
+function getReportOrdersWithCatalog() {
+  const catalog = AppClient.loadCatalog?.() || null;
+  return state.orders.map((order) => {
+    const items = AppClient.enrichItemsWithCatalog(order.items || [], catalog);
+    return { ...order, items };
+  });
+}
+
 function updateReportOptions() {
   const stores = getStoreList();
   buildMultiSelectDropdown(
@@ -1402,13 +1445,17 @@ function updateReportOptions() {
 
   const productMap = getProductMap();
   const productOptions = [{ value: "", label: "Select a product" }];
+  const missingProductOptions = [{ value: "", label: "Select an item" }];
   productMap.forEach((label, value) => productOptions.push({ value, label }));
+  productMap.forEach((label, value) => missingProductOptions.push({ value, label }));
   buildSelectOptions(ui.compareProduct, productOptions, state.reports.compareProduct);
+  buildSelectOptions(ui.missingProduct, missingProductOptions, state.reports.missingProduct);
 
   const categoryMap = getCategoryMap();
   const categoryOptions = [{ value: "", label: "Select a category" }];
   categoryMap.forEach((label, value) => categoryOptions.push({ value, label }));
   buildSelectOptions(ui.compareCategory, categoryOptions, state.reports.compareCategory);
+  buildSelectOptions(ui.missingCategory, categoryOptions, state.reports.missingCategory);
 
   if (ui.reportHistoryCount) {
     ui.reportHistoryCount.textContent = String(state.orders.length);
@@ -1428,6 +1475,16 @@ function syncReportFiltersFromInputs() {
   state.reports.compareStart = ui.compareStart?.value || "";
   state.reports.compareEnd = ui.compareEnd?.value || "";
   state.reports.compareSort = ui.compareSort?.value || state.reports.compareSort;
+}
+
+function syncMissingFiltersFromInputs() {
+  if (!ui.missingProduct) return;
+  state.reports.missingScope = ui.missingScope?.value || state.reports.missingScope;
+  state.reports.missingProduct = normalizeProductKey(ui.missingProduct?.value);
+  state.reports.missingCategory = ui.missingCategory?.value || "";
+  state.reports.missingStart = ui.missingStart?.value || "";
+  state.reports.missingEnd = ui.missingEnd?.value || "";
+  state.reports.missingSort = ui.missingSort?.value || state.reports.missingSort;
 }
 
 function itemMatchesProduct(item, productKey) {
@@ -1452,6 +1509,29 @@ function updateCompareScopeUI() {
   setHidden(ui.compareCategoryField, !isCategory);
 }
 
+function updateMissingScopeUI() {
+  const currentScope = ui.missingScope?.value || state.reports.missingScope;
+  const isCategory = currentScope === "category";
+  setHidden(ui.missingProductField, isCategory);
+  setHidden(ui.missingCategoryField, !isCategory);
+}
+
+function setReportMode(mode) {
+  const nextMode = mode === "missing" ? "missing" : "volume";
+  state.reports.mode = nextMode;
+  const isVolume = nextMode === "volume";
+  if (ui.reportModeVolume) {
+    ui.reportModeVolume.classList.toggle("is-active", isVolume);
+    ui.reportModeVolume.setAttribute("aria-selected", isVolume ? "true" : "false");
+  }
+  if (ui.reportModeMissing) {
+    ui.reportModeMissing.classList.toggle("is-active", !isVolume);
+    ui.reportModeMissing.setAttribute("aria-selected", isVolume ? "false" : "true");
+  }
+  setHidden(ui.reportVolumePanel, !isVolume);
+  setHidden(ui.reportMissingPanel, isVolume);
+}
+
 function sortStores(stores, totals, sortKey) {
   const list = Array.from(stores);
   const compareQty = (a, b) => (totals.get(b) || 0) - (totals.get(a) || 0);
@@ -1461,20 +1541,65 @@ function sortStores(stores, totals, sortKey) {
 
   switch (sortKey) {
     case "qty-asc":
+    case "missing-asc":
       return list.sort(compareQtyAsc);
     case "store-desc":
       return list.sort(compareNameDesc);
     case "store-asc":
+    case "item-asc":
       return list.sort(compareNameAsc);
     case "qty-desc":
+    case "missing-desc":
     default:
       return list.sort(compareQty);
   }
 }
 
+function parseMissingItemStatus(status, orderedQty) {
+  if (!status) return null;
+  const normalized = String(status).trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.includes("unavailable") || normalized.includes("out of stock")) {
+    return {
+      missingQty: orderedQty,
+      orderedQty,
+      collectedQty: 0,
+      reason: "unavailable",
+    };
+  }
+  const partialMatch = normalized.match(/partially\s+(?:collected|pulled)\s*(\d+)\s*of\s*(\d+)/i);
+  if (!partialMatch) return null;
+  const collectedQty = Number(partialMatch[1]);
+  const orderedFromStatus = Number(partialMatch[2]);
+  if (!Number.isFinite(collectedQty)) return null;
+  let finalOrdered = Number(orderedQty);
+  if (!Number.isFinite(finalOrdered) || finalOrdered <= 0) {
+    finalOrdered = Number.isFinite(orderedFromStatus) ? orderedFromStatus : 0;
+  }
+  if (Number.isFinite(orderedFromStatus) && Number.isFinite(orderedQty) && orderedQty > 0 && orderedQty !== orderedFromStatus) {
+    log("Partial status qty mismatch", { orderedQty, orderedFromStatus, status });
+    if (orderedQty < collectedQty && orderedFromStatus >= collectedQty) {
+      finalOrdered = orderedFromStatus;
+    }
+  }
+  if (finalOrdered < collectedQty && Number.isFinite(orderedFromStatus) && orderedFromStatus >= collectedQty) {
+    finalOrdered = orderedFromStatus;
+  }
+  const missingQty = Math.max((Number(finalOrdered) || 0) - collectedQty, 0);
+  return {
+    missingQty,
+    orderedQty: finalOrdered,
+    collectedQty,
+    reason: "partial",
+  };
+}
+
 function renderReports() {
   if (!ui.reportsPanel) return;
   updateCompareScopeUI();
+  updateMissingScopeUI();
+
+  const reportOrders = getReportOrdersWithCatalog();
 
   const allStores = getStoreList();
   const selectedStores = state.reports.compareStores || [];
@@ -1564,7 +1689,7 @@ function renderReports() {
   });
 
   if (compareValid) {
-    state.orders.forEach((order) => {
+    reportOrders.forEach((order) => {
       if (!order) return;
       const orderDate = parseDateValue(order.requested_date || order.created_at);
       if (!orderDate) return;
@@ -1659,10 +1784,162 @@ function renderReports() {
   if (ui.reportTopStore && !compareValid) {
     ui.reportTopStore.textContent = "—";
   }
+
+  const missingStart = parseDateValue(state.reports.missingStart);
+  const missingEnd = parseDateValue(state.reports.missingEnd);
+  const missingScope = state.reports.missingScope;
+  const missingSort = state.reports.missingSort;
+  const missingProduct = state.reports.missingProduct;
+  const missingCategory = state.reports.missingCategory;
+  const missingTarget = missingScope === "category" ? missingCategory : missingProduct;
+  const missingHasFilter = Boolean(missingTarget);
+  let missingValid = true;
+  if (missingStart && missingEnd && missingStart > missingEnd) {
+    missingValid = false;
+  }
+
+  if (ui.missingRangeHint) {
+    ui.missingRangeHint.textContent = "Missing inventory uses the start/end date range above.";
+  }
+
+  const missingStoreTotals = new Map();
+  const missingItemTotals = new Map();
+
+  if (missingValid) {
+    reportOrders.forEach((order) => {
+      if (!order) return;
+      const orderDate = parseDateValue(order.requested_date || order.created_at);
+      if (!orderDate) return;
+      if (!isWithinRange(orderDate, missingStart, missingEnd)) return;
+      (order.items || []).forEach((item) => {
+        const orderedQty = Number(item.qty || 0) || 0;
+        const statusResult = parseMissingItemStatus(item.status || "", orderedQty);
+        if (!statusResult || !statusResult.missingQty) return;
+        if (missingHasFilter) {
+          const match = missingScope === "category"
+            ? itemMatchesCategory(item, missingTarget)
+            : itemMatchesProduct(item, missingTarget);
+          if (!match) return;
+          const current = missingStoreTotals.get(order.store) || 0;
+          missingStoreTotals.set(order.store, current + statusResult.missingQty);
+        } else {
+          const key = item.sku || item.item_no || item.name;
+          if (!key) return;
+          const current = missingItemTotals.get(key) || { name: item.name || key, qty: 0 };
+          current.name = item.name || current.name || key;
+          current.qty += statusResult.missingQty;
+          missingItemTotals.set(key, current);
+        }
+      });
+    });
+  }
+
+  if (ui.missingStoreHead) {
+    ui.missingStoreHead.innerHTML = "";
+    const row = document.createElement("tr");
+    const storeHead = document.createElement("th");
+    storeHead.textContent = "Store";
+    const qtyHead = document.createElement("th");
+    qtyHead.textContent = "Missing qty";
+    row.appendChild(storeHead);
+    row.appendChild(qtyHead);
+    ui.missingStoreHead.appendChild(row);
+  }
+
+  if (ui.missingStoreBody) {
+    ui.missingStoreBody.innerHTML = "";
+    if (missingValid && missingHasFilter && missingStoreTotals.size) {
+      const storeList = Array.from(missingStoreTotals.keys());
+      const totalsMap = new Map(missingStoreTotals);
+      const sortedStores = sortStores(storeList, totalsMap, missingSort);
+      let grandTotal = 0;
+      sortedStores.forEach((storeName) => {
+        const qty = totalsMap.get(storeName) || 0;
+        grandTotal += qty;
+        const row = document.createElement("tr");
+        const storeCell = document.createElement("td");
+        storeCell.textContent = storeName;
+        const qtyCell = document.createElement("td");
+        qtyCell.textContent = String(qty);
+        row.appendChild(storeCell);
+        row.appendChild(qtyCell);
+        ui.missingStoreBody.appendChild(row);
+      });
+      if (ui.missingGrandTotal) {
+        ui.missingGrandTotal.textContent = String(grandTotal);
+      }
+      setHidden(ui.missingGrandTotalWrap, false);
+    } else {
+      setHidden(ui.missingGrandTotalWrap, true);
+    }
+  }
+
+  if (ui.missingItemsHead) {
+    ui.missingItemsHead.innerHTML = "";
+    const row = document.createElement("tr");
+    const itemHead = document.createElement("th");
+    itemHead.textContent = "Item";
+    const qtyHead = document.createElement("th");
+    qtyHead.textContent = "Missing qty";
+    row.appendChild(itemHead);
+    row.appendChild(qtyHead);
+    ui.missingItemsHead.appendChild(row);
+  }
+
+  if (ui.missingItemsBody) {
+    ui.missingItemsBody.innerHTML = "";
+    if (missingValid && !missingHasFilter && missingItemTotals.size) {
+      const itemList = Array.from(missingItemTotals.values());
+      const sortedItems = itemList.sort((a, b) => {
+        if (missingSort === "item-asc" || missingSort === "store-asc" || missingSort === "store-desc") {
+          return String(a.name || "").localeCompare(String(b.name || ""));
+        }
+        if (missingSort === "missing-asc") {
+          return (a.qty || 0) - (b.qty || 0);
+        }
+        return (b.qty || 0) - (a.qty || 0);
+      });
+      sortedItems.forEach((item) => {
+        const row = document.createElement("tr");
+        const nameCell = document.createElement("td");
+        nameCell.textContent = item.name;
+        const qtyCell = document.createElement("td");
+        qtyCell.textContent = String(item.qty || 0);
+        row.appendChild(nameCell);
+        row.appendChild(qtyCell);
+        ui.missingItemsBody.appendChild(row);
+      });
+    }
+  }
+
+  const showMissingStore = missingHasFilter;
+  if (ui.missingStoreEmpty && missingHasFilter) {
+    ui.missingStoreEmpty.textContent = missingValid
+      ? "No missing inventory found in this range."
+      : "Start date must be before end date.";
+  }
+  if (ui.missingItemsEmpty && !missingHasFilter) {
+    ui.missingItemsEmpty.textContent = missingValid
+      ? "No missing inventory found in this range."
+      : "Start date must be before end date.";
+  }
+  const showMissingStoreEmpty = showMissingStore && (!missingValid || !missingStoreTotals.size);
+  const showMissingItemsEmpty = !showMissingStore && (!missingValid || !missingItemTotals.size);
+  setHidden(ui.missingStoreTitle, !showMissingStore);
+  setHidden(ui.missingItemsTitle, showMissingStore);
+  setHidden(ui.missingStoreWrap, !showMissingStore);
+  setHidden(ui.missingStoreEmpty, !showMissingStoreEmpty);
+  setHidden(ui.missingItemsWrap, showMissingStore);
+  setHidden(ui.missingItemsEmpty, !showMissingItemsEmpty);
 }
 
 function applyReportFilters() {
   syncReportFiltersFromInputs();
+  renderReports();
+}
+
+function applyMissingReportFilters() {
+  syncMissingFiltersFromInputs();
   renderReports();
 }
 
@@ -1872,6 +2149,7 @@ function wireEvents() {
   ui.notes?.addEventListener("input", markDirty);
 
   ui.compareScope?.addEventListener("change", updateCompareScopeUI);
+  ui.missingScope?.addEventListener("change", updateMissingScopeUI);
   ui.compareStores?.addEventListener("change", () => {
     updateMultiSelectToggle(ui.compareStores);
   });
@@ -1887,6 +2165,15 @@ function wireEvents() {
     setMultiSelectOpen(ui.compareStores, false);
   });
   ui.compareGo?.addEventListener("click", applyReportFilters);
+  ui.missingGo?.addEventListener("click", applyMissingReportFilters);
+  ui.reportModeVolume?.addEventListener("click", () => {
+    setReportMode("volume");
+    renderReports();
+  });
+  ui.reportModeMissing?.addEventListener("click", () => {
+    setReportMode("missing");
+    renderReports();
+  });
 
   // Optional: category jump toggle
   ui.categoryJumpBtn?.addEventListener("click", () => {
