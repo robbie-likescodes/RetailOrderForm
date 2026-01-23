@@ -159,7 +159,7 @@ function loadDeliveryState() {
         const value = state.items[key];
         if (typeof value === "string") {
           if (value === "pulled") {
-            state.items[key] = { status: "Pulled" };
+            state.items[key] = { status: "Complete" };
           } else if (value === "unavailable") {
             state.items[key] = { status: "Unavailable", pulledQty: 0 };
           }
@@ -276,7 +276,9 @@ function parsePulledQtyFromStatus(status, orderedQty) {
   const normalized = String(status).trim().toLowerCase();
   if (!normalized) return null;
   if (normalized.startsWith("unavailable")) return 0;
+  if (normalized.startsWith("not complete")) return 0;
   if (normalized.startsWith("not pulled")) return 0;
+  if (normalized.startsWith("complete")) return orderedQty;
   if (normalized.startsWith("pulled")) return orderedQty;
   const match = normalized.match(/partially collected\s+(\d+)\s+of\s+(\d+)/);
   if (match) {
@@ -287,8 +289,8 @@ function parsePulledQtyFromStatus(status, orderedQty) {
 }
 
 function buildItemStatusLabel(pulledQty, orderedQty) {
-  if (pulledQty <= 0) return "Not Pulled";
-  if (pulledQty >= orderedQty) return "Pulled";
+  if (pulledQty <= 0) return "Not Complete";
+  if (pulledQty >= orderedQty) return "Complete";
   return `Partially Collected ${pulledQty} of ${orderedQty}`;
 }
 
@@ -303,8 +305,10 @@ function getItemProgress(order, item) {
   const normalized = String(statusLabel || "").trim().toLowerCase();
   let state = "not_pulled";
   if (normalized.startsWith("unavailable")) state = "unavailable";
+  else if (normalized.startsWith("complete")) state = "pulled";
   else if (normalized.startsWith("pulled")) state = "pulled";
   else if (normalized.startsWith("partially collected")) state = "partial";
+  else if (normalized.startsWith("not complete")) state = "not_pulled";
   else if (normalized.startsWith("not pulled")) state = "not_pulled";
   else if (pulledQty >= orderedQty && orderedQty > 0) state = "pulled";
   else if (pulledQty > 0) state = "partial";
@@ -531,7 +535,7 @@ function renderOrders() {
 
           const select = document.createElement("select");
           select.className = "itemRow__select";
-          select.setAttribute("aria-label", `Pulled quantity for ${item.name || "item"}`);
+          select.setAttribute("aria-label", `Complete quantity for ${item.name || "item"}`);
           const maxQty = Math.max(Number(item.qty || 0) || 0, 0);
           for (let i = 0; i <= maxQty; i += 1) {
             const option = document.createElement("option");
@@ -547,7 +551,7 @@ function renderOrders() {
           const pulledButton = document.createElement("button");
           pulledButton.type = "button";
           pulledButton.className = "itemRow__action itemRow__action--pulled";
-          pulledButton.textContent = "Pulled";
+          pulledButton.textContent = "Complete";
 
 
           const unavailableToggle = document.createElement("label");
@@ -584,14 +588,14 @@ function renderOrders() {
           });
 
           pulledButton.addEventListener("click", () => {
-            applyStatus("Pulled", progress.orderedQty);
+            applyStatus("Complete", progress.orderedQty);
           });
 
           unavailableInput.addEventListener("change", () => {
             if (unavailableInput.checked) {
               applyStatus("Unavailable", 0);
             } else {
-              applyStatus("Not Pulled", 0);
+              applyStatus("Not Complete", 0);
             }
           });
 
