@@ -441,8 +441,6 @@ function renderOrders() {
       orderBody.innerHTML = `
         <div class="historyOrder__metaGrid">
           <div><strong>Placed by:</strong> ${escapeHtml(order.placed_by || "—")}</div>
-          <div><strong>Requested date:</strong> ${escapeHtml(order.requested_date || "—")}</div>
-          <div><strong>Email:</strong> ${escapeHtml(order.email || "—")}</div>
           <div><strong>Notes:</strong> ${escapeHtml(order.notes || "—")}</div>
         </div>
       `;
