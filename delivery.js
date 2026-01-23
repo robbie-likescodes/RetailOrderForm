@@ -512,10 +512,16 @@ function renderOrders() {
             if (progress.state === "not_pulled") itemRow.classList.add("deliveryItem--notPulled");
           }
 
+          const orderedQty = item.qty ?? "—";
+          const itemMeta = [item.item_no, item.unit, item.pack_size].filter(Boolean).map(escapeHtml).join(" • ");
+
           const itemInfo = document.createElement("div");
           itemInfo.innerHTML = `
             <div class="historyItem__name">${escapeHtml(item.name || item.sku || "Item")}</div>
-            <div class="historyItem__meta">${escapeHtml([item.item_no, item.unit, item.pack_size, `Ordered: ${item.qty}`].filter(Boolean).join(" • "))}</div>
+            <div class="historyItem__meta">
+              ${itemMeta ? `${itemMeta}<span class="historyItem__metaSeparator"> • </span>` : ""}
+              <span class="historyItem__ordered">Ordered: <span class="historyItem__orderedQty">${escapeHtml(String(orderedQty))}</span></span>
+            </div>
             <div class="deliveryItem__status">Status: ${escapeHtml(statusLabel)}</div>
           `;
 
