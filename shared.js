@@ -170,6 +170,56 @@
     };
   }
 
+  function normalizeMatchKey(value) {
+    return String(value || "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLowerCase();
+  }
+
+  function addProductKey(map, key, product) {
+    const normalized = normalizeMatchKey(key);
+    if (!normalized) return;
+    if (!map.has(normalized)) map.set(normalized, product);
+  }
+
+  function buildCatalogProductMap(catalog) {
+    const map = new Map();
+    if (!catalog || !Array.isArray(catalog.products)) return map;
+    const nameSet = new Set();
+    catalog.products.forEach((product) => {
+      const nameKey = normalizeMatchKey(product?.name);
+      if (nameKey) nameSet.add(nameKey);
+    });
+    catalog.products.forEach((product) => {
+      if (!product) return;
+      addProductKey(map, product.sku, product);
+      addProductKey(map, product.item_no, product);
+      addProductKey(map, product.name, product);
+      const normalizedName = normalizeMatchKey(product.name);
+      if (!normalizedName) return;
+      if (normalizedName.startsWith("shott:")) {
+        const stripped = normalizedName.replace(/^shott:\s*/i, "");
+        if (stripped && !nameSet.has(stripped)) addProductKey(map, stripped, product);
+      } else {
+        const prefixed = `shott: ${normalizedName}`;
+        if (!nameSet.has(prefixed)) addProductKey(map, prefixed, product);
+      }
+    });
+    return map;
+  }
+
+  function findCatalogProduct(item, productMap) {
+    if (!item || !productMap) return null;
+    const skuKey = normalizeMatchKey(item.sku);
+    if (skuKey && productMap.has(skuKey)) return productMap.get(skuKey);
+    const itemNoKey = normalizeMatchKey(item.item_no);
+    if (itemNoKey && productMap.has(itemNoKey)) return productMap.get(itemNoKey);
+    const nameKey = normalizeMatchKey(item.name);
+    if (nameKey && productMap.has(nameKey)) return productMap.get(nameKey);
+    return null;
+  }
+
   function saveCatalog(catalog) {
     if (!catalog) return;
     const payload = {
@@ -422,18 +472,15 @@
 
   function enrichItemsWithCatalog(items, catalog) {
     if (!Array.isArray(items) || !catalog || !Array.isArray(catalog.products)) return items || [];
-    const productMap = new Map();
-    catalog.products.forEach((product) => {
-      if (product.sku) productMap.set(String(product.sku), product);
-    });
+    const productMap = buildCatalogProductMap(catalog);
     return items.map((item) => {
-      const sku = String(item.sku || "");
-      const match = sku ? productMap.get(sku) : null;
+      const match = findCatalogProduct(item, productMap);
       return {
         ...item,
+        sku: item.sku || match?.sku || "",
         item_no: item.item_no || match?.item_no || "",
         name: item.name || match?.name || "",
-        category: item.category || match?.category || "",
+        category: match?.category || "",
         unit: item.unit || match?.unit || "",
         pack_size: item.pack_size || match?.pack_size || "",
       };
@@ -502,6 +549,8 @@
     loadOrders,
     saveOrders,
     enrichItemsWithCatalog,
+    buildCatalogProductMap,
+    findCatalogProduct,
     validateCategoriesResponse,
     validateProductsResponse,
     validateOrdersResponse,

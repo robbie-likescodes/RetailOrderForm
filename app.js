@@ -272,6 +272,13 @@ function normalizeKey(key) {
     .replace(/^_+|_+$/g, "");
 }
 
+function normalizeCategoryKey(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
 function normalizeRowKeys(row) {
   if (!row || typeof row !== "object") return {};
   return Object.keys(row).reduce((acc, key) => {
@@ -1409,30 +1416,27 @@ function getProductMap() {
 
 function getCategoryMap() {
   const map = new Map();
+  const categoryLabels = new Map();
   state.categories.forEach((category) => {
     const key = category.category || category.display_name;
     if (!key) return;
-    map.set(key, category.display_name || key);
+    categoryLabels.set(key, category.display_name || key);
   });
   state.products.forEach((product) => {
     if (!product.category || map.has(product.category)) return;
-    map.set(product.category, product.category);
-  });
-  state.orders.forEach((order) => {
-    (order.items || []).forEach((item) => {
-      if (!item.category || map.has(item.category)) return;
-      map.set(item.category, item.category);
-    });
+    map.set(product.category, categoryLabels.get(product.category) || product.category);
   });
   return map;
 }
 
-function getReportOrdersWithCatalog() {
+function getReportCatalogContext() {
   const catalog = AppClient.loadCatalog?.() || null;
-  return state.orders.map((order) => {
+  const productMap = AppClient.buildCatalogProductMap?.(catalog) || new Map();
+  const orders = state.orders.map((order) => {
     const items = AppClient.enrichItemsWithCatalog(order.items || [], catalog);
     return { ...order, items };
   });
+  return { catalog, productMap, orders };
 }
 
 function updateReportOptions() {
@@ -1497,9 +1501,12 @@ function itemMatchesProduct(item, productKey) {
     || skuMatch || itemNoMatch || nameMatch;
 }
 
-function itemMatchesCategory(item, categoryKey) {
+function itemMatchesCategory(item, categoryKey, productMap) {
   if (!categoryKey) return false;
-  return normalizeKey(item.category) === normalizeKey(categoryKey);
+  const match = AppClient.findCatalogProduct?.(item, productMap);
+  const resolvedCategory = match?.category || "";
+  if (!resolvedCategory) return false;
+  return normalizeCategoryKey(resolvedCategory) === normalizeCategoryKey(categoryKey);
 }
 
 function updateCompareScopeUI() {
@@ -1599,7 +1606,7 @@ function renderReports() {
   updateCompareScopeUI();
   updateMissingScopeUI();
 
-  const reportOrders = getReportOrdersWithCatalog();
+  const { orders: reportOrders, productMap } = getReportCatalogContext();
 
   const allStores = getStoreList();
   const selectedStores = state.reports.compareStores || [];
@@ -1688,20 +1695,56 @@ function renderReports() {
     compareTotals.set(storeName, totals);
   });
 
+  const primaryFrame = frames.find((frame) => frame.key === "custom" && frame.active)
+    || frames.find((frame) => frame.active)
+    || frames[0];
+
+  const categoryDebug = {
+    selectedCategory: compareScope === "category" ? compareCategory : "",
+    ordersInRange: 0,
+    itemsProcessed: 0,
+    itemsMatched: 0,
+    itemsIncluded: 0,
+    sample: [],
+  };
+
   if (compareValid) {
     reportOrders.forEach((order) => {
       if (!order) return;
       const orderDate = parseDateValue(order.requested_date || order.created_at);
       if (!orderDate) return;
       if (!stores.includes(order.store)) return;
+      const inPrimaryRange = primaryFrame.active && isWithinRange(orderDate, primaryFrame.start, primaryFrame.end);
+      if (inPrimaryRange && compareScope === "category") {
+        categoryDebug.ordersInRange += 1;
+      }
 
       let matchedQty = 0;
       (order.items || []).forEach((item) => {
+        if (compareScope === "category" && inPrimaryRange) {
+          categoryDebug.itemsProcessed += 1;
+        }
+        const productMatch = compareScope === "category"
+          ? AppClient.findCatalogProduct?.(item, productMap)
+          : null;
+        if (compareScope === "category" && inPrimaryRange && productMatch) {
+          categoryDebug.itemsMatched += 1;
+        }
         const match = compareScope === "category"
-          ? itemMatchesCategory(item, compareTarget)
+          ? itemMatchesCategory(item, compareTarget, productMap)
           : itemMatchesProduct(item, compareTarget);
         if (!match) return;
         matchedQty += Number(item.qty) || 0;
+        if (compareScope === "category" && inPrimaryRange) {
+          categoryDebug.itemsIncluded += 1;
+          if (categoryDebug.sample.length < 5 && productMatch) {
+            categoryDebug.sample.push({
+              item: item.name || item.sku || "",
+              product: productMatch.name || productMatch.sku || "",
+              category: productMatch.category || "",
+            });
+          }
+        }
       });
       if (!matchedQty) return;
 
@@ -1714,9 +1757,9 @@ function renderReports() {
     });
   }
 
-  const primaryFrame = frames.find((frame) => frame.key === "custom" && frame.active)
-    || frames.find((frame) => frame.active)
-    || frames[0];
+  if (DEBUG && compareScope === "category") {
+    log("Reports category debug", categoryDebug);
+  }
   const sortTotals = new Map();
   stores.forEach((storeName) => {
     const totals = compareTotals.get(storeName);
@@ -1817,7 +1860,7 @@ function renderReports() {
         if (!statusResult || !statusResult.missingQty) return;
         if (missingHasFilter) {
           const match = missingScope === "category"
-            ? itemMatchesCategory(item, missingTarget)
+            ? itemMatchesCategory(item, missingTarget, productMap)
             : itemMatchesProduct(item, missingTarget);
           if (!match) return;
           const current = missingStoreTotals.get(order.store) || 0;
