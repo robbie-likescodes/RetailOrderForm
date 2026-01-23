@@ -152,8 +152,8 @@ function renderHistory() {
       const orderSummary = document.createElement("summary");
       orderSummary.innerHTML = `
         <div>
-          <div class="historyOrder__title">Order ${escapeHtml(orderId)}</div>
-          <div class="historyOrder__subtitle">${escapeHtml(createdAt)}</div>
+          <div class="historyOrder__title">Order from: ${escapeHtml(createdAt)} · ${escapeHtml(storeName)}</div>
+          <div class="historyOrder__subtitle">${escapeHtml(orderId)}</div>
         </div>
         <div class="historyOrder__metaSummary">
           <span>${escapeHtml(String(order.item_count || ""))} items</span>
@@ -168,7 +168,6 @@ function renderHistory() {
         <div class="historyOrder__metaGrid">
           <div><strong>Placed by:</strong> ${escapeHtml(order.placed_by || "—")}</div>
           <div><strong>Requested date:</strong> ${escapeHtml(order.requested_date || "—")}</div>
-          <div><strong>Email:</strong> ${escapeHtml(order.email || "—")}</div>
           <div><strong>Notes:</strong> ${escapeHtml(order.notes || "—")}</div>
         </div>
       `;
