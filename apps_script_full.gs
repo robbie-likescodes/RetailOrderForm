@@ -309,6 +309,7 @@ function doPost(e) {
     }
 
     const ordersSheet = ensureSheet_(CONFIG.sheets.orders, orderHeaders);
+    ensureOrdersEmailSentColumn_(ordersSheet, orderHeaders);
     const headerError = validateOrdersHeader_(ordersSheet, orderHeaders);
     if (headerError) {
       Logger.log("doPost validateHeaders failed requestId=%s", requestId);
@@ -335,6 +336,7 @@ function doPost(e) {
       JSON.stringify(normalized.items),
       itemsSummary,
       payload.status || "",
+      "",
       ...itemCells,
     ];
 
@@ -347,13 +349,18 @@ function doPost(e) {
 
     Logger.log("doPost appendRow requestId=%s", requestId);
     ordersSheet.appendRow(row);
+    const appendedRow = ordersSheet.getLastRow();
 
     Logger.log("doPost sendEmail requestId=%s", requestId);
-    const emailError = sendOfficeEmail_(payload, orderId, itemsSummary);
+    const emailError = sendOfficeEmail_(payload, orderId, itemsSummary, { sheet: ordersSheet, rowIndex: appendedRow });
 
     const response = { order_id: orderId, request_id: requestId };
     if (emailError) {
       response.warnings = [{ code: "EMAIL_FAILED", message: emailError }];
+      response.email_status = "failed";
+      response.email_error = emailError;
+    } else {
+      response.email_status = "sent";
     }
     return jsonResponse(buildSuccess_(response, requestId));
   } catch (err) {
@@ -635,10 +642,12 @@ function isRowActive_(row) {
 
 function getOrderNotificationEmails_() {
   let rows = [];
+  let readError = "";
   try {
     rows = getSheetRows_(CONFIG.sheets.contacts);
   } catch (err) {
     Logger.log("Contacts sheet unavailable: %s", err);
+    readError = err && err.message ? err.message : String(err);
     rows = [];
   }
 
@@ -655,10 +664,6 @@ function getOrderNotificationEmails_() {
       if (email) emails.push(email);
     });
 
-  if (!emails.length && CONFIG.officeEmail) {
-    emails.push(CONFIG.officeEmail);
-  }
-
   const deduped = [];
   const seen = new Set();
   emails.forEach((email) => {
@@ -669,7 +674,13 @@ function getOrderNotificationEmails_() {
     deduped.push(email);
   });
 
-  return deduped;
+  if (readError) {
+    return { emails: [], error: "Contacts sheet unavailable. Check the Contacts tab and permissions." };
+  }
+  if (!deduped.length) {
+    return { emails: [], error: "No notification emails found in Contacts sheet." };
+  }
+  return { emails: deduped, error: "" };
 }
 
 function extractOrderItems_(row) {
@@ -851,6 +862,7 @@ function buildOrderHeaders_(maxProducts) {
     "items_json",
     "items_summary",
     "status",
+    "email_sent_at",
   ];
 
   for (let i = 1; i <= maxProducts; i += 1) {
@@ -858,6 +870,24 @@ function buildOrderHeaders_(maxProducts) {
   }
 
   return headers;
+}
+
+function getHeaderIndex_(sheet, headerName) {
+  if (!sheet) return 0;
+  const lastColumn = sheet.getLastColumn();
+  if (lastColumn < 1) return 0;
+  const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0].map(normalizeHeader_);
+  return headers.indexOf(normalizeHeader_(headerName)) + 1;
+}
+
+function ensureOrdersEmailSentColumn_(sheet, expectedHeaders) {
+  if (!sheet) return;
+  const expectedIndex = expectedHeaders.map(normalizeHeader_).indexOf("email_sent_at") + 1;
+  if (!expectedIndex) return;
+  const existingIndex = getHeaderIndex_(sheet, "email_sent_at");
+  if (existingIndex) return;
+  sheet.insertColumnBefore(expectedIndex);
+  sheet.getRange(1, expectedIndex).setValue(expectedHeaders[expectedIndex - 1]);
 }
 
 function validateOrdersHeader_(sheet, expectedHeaders) {
@@ -904,40 +934,134 @@ function buildItemsSummary_(items) {
     .join(", ");
 }
 
-function formatOrderItems_(items) {
+function formatOrderItemsForEmail_(items) {
   if (!items || !items.length) return ["(No items provided)"];
   return items.map(item => {
     const name = item.name || item.sku || "Item";
     const qty = item.qty || "";
-    return `- ${name}${qty ? ` x${qty}` : ""}`;
+    const unit = item.unit || item.unit_size || "";
+    const pack = item.pack_size || item.pack || "";
+    const status = item.status || "";
+    const parts = [];
+    if (qty !== "") parts.push(`Qty: ${qty}`);
+    if (unit) parts.push(`Unit: ${unit}`);
+    if (pack) parts.push(`Size: ${pack}`);
+    if (status) parts.push(`Status: ${status}`);
+    const details = parts.length ? ` (${parts.join(" | ")})` : "";
+    return `- ${name}${details}`;
   });
 }
 
-function sendOfficeEmail_(payload, orderId, itemsSummary) {
-  const recipients = getOrderNotificationEmails_();
-  if (!recipients.length) return "No notification emails configured.";
+function sendOfficeEmail_(payload, orderId, itemsSummary, options) {
+  const contactInfo = getOrderNotificationEmails_();
+  if (contactInfo.error) {
+    Logger.log("orderEmail contacts error order_id=%s message=%s", orderId, contactInfo.error);
+    return contactInfo.error;
+  }
+  const recipients = contactInfo.emails || [];
+  if (!recipients.length) {
+    Logger.log("orderEmail recipients empty order_id=%s", orderId);
+    return "No notification emails found in Contacts sheet.";
+  }
+
+  const sheet = options && options.sheet ? options.sheet : null;
+  const rowIndex = options && options.rowIndex ? options.rowIndex : 0;
+  const emailSentColumn = sheet ? getHeaderIndex_(sheet, "email_sent_at") : 0;
+  if (sheet && rowIndex && emailSentColumn) {
+    const existing = sheet.getRange(rowIndex, emailSentColumn).getValue();
+    if (existing) {
+      Logger.log("orderEmail already sent order_id=%s", orderId);
+      return "";
+    }
+  }
+
   try {
     const subject = `New Retail Order ${orderId}`;
     const bodyLines = [
       `Order ID: ${orderId}`,
       `Store: ${payload.store || ""}`,
-      `Placed by: ${payload.placed_by || ""}`,
       `Requested date: ${payload.requested_date || ""}`,
+      `Created timestamp: ${payload.timestamp || ""}`,
+      `Placed by: ${payload.placed_by || ""}`,
       `Email: ${payload.email || ""}`,
       `Notes: ${payload.notes || ""}`,
       "Items:",
-      ...formatOrderItems_(payload.items || []),
+      ...formatOrderItemsForEmail_(payload.items || []),
       "",
       `Items summary: ${itemsSummary || ""}`,
-      "",
-      "Raw Items JSON:",
-      JSON.stringify(payload.items || [], null, 2),
     ];
-    MailApp.sendEmail(recipients.join(","), subject, bodyLines.join("\n"));
+    Logger.log("orderEmail sending order_id=%s recipients=%s", orderId, recipients.length);
+    GmailApp.sendEmail(recipients.join(","), subject, bodyLines.join("\n"));
+    if (sheet && rowIndex && emailSentColumn) {
+      sheet.getRange(rowIndex, emailSentColumn).setValue(new Date().toISOString());
+    }
+    Logger.log("orderEmail sent order_id=%s", orderId);
     return "";
   } catch (err) {
-    Logger.log("sendOfficeEmail error: %s", err);
-    return err && err.message ? err.message : String(err);
+    const message = err && err.message ? err.message : String(err);
+    Logger.log("orderEmail failed order_id=%s error=%s", orderId, message);
+    if (message.toLowerCase().includes("authorization") || message.toLowerCase().includes("not authorized")) {
+      Logger.log("orderEmail authorization required. Run a manual testSendOrderEmail() to authorize GmailApp.");
+    }
+    return message;
+  }
+}
+
+function testSendOrderEmail() {
+  try {
+    const sheet = getSpreadsheet_().getSheetByName(CONFIG.sheets.orders);
+    if (!sheet) {
+      Logger.log("testSendOrderEmail: Orders sheet not found.");
+      return;
+    }
+    const rows = getSheetRows_(CONFIG.sheets.orders);
+    if (!rows.length) {
+      Logger.log("testSendOrderEmail: Orders sheet is empty.");
+      return;
+    }
+    const lastRow = rows[rows.length - 1];
+    const orderId = String(lastRow.order_id || "").trim();
+    if (!orderId) {
+      Logger.log("testSendOrderEmail: Missing order_id in last row.");
+      return;
+    }
+    const payload = {
+      store: lastRow.store || "",
+      placed_by: lastRow.placed_by || "",
+      email: lastRow.email || "",
+      notes: lastRow.notes || "",
+      timestamp: lastRow.timestamp || "",
+      requested_date: lastRow.requested_date || "",
+      items: collectOrderItemsFromRow_(lastRow),
+    };
+    const itemsSummary = String(lastRow.items_summary || "");
+    const emailSentColumn = getHeaderIndex_(sheet, "email_sent_at");
+    const orderIdColumn = getHeaderIndex_(sheet, "order_id");
+    let rowIndex = 0;
+    if (orderIdColumn) {
+      const values = sheet.getRange(2, orderIdColumn, sheet.getLastRow() - 1, 1).getValues();
+      for (var i = 0; i < values.length; i += 1) {
+        if (String(values[i][0] || "").trim() === orderId) {
+          rowIndex = i + 2;
+          break;
+        }
+      }
+    }
+    if (rowIndex && emailSentColumn) {
+      const existing = sheet.getRange(rowIndex, emailSentColumn).getValue();
+      if (existing) {
+        Logger.log("testSendOrderEmail: Email already sent for order_id=%s at %s", orderId, existing);
+        return;
+      }
+    }
+    const emailError = sendOfficeEmail_(payload, orderId, itemsSummary, { sheet, rowIndex });
+    if (emailError) {
+      Logger.log("testSendOrderEmail: Failed order_id=%s error=%s", orderId, emailError);
+    } else {
+      Logger.log("testSendOrderEmail: Success order_id=%s", orderId);
+    }
+  } catch (err) {
+    Logger.log("testSendOrderEmail: Unexpected error %s", err);
   }
 }
 

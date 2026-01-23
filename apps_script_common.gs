@@ -161,10 +161,12 @@ function isRowActive_(row) {
 
 function getOrderNotificationEmails_() {
   let rows = [];
+  let readError = "";
   try {
     rows = getSheetRows_(CONFIG.sheets.contacts);
   } catch (err) {
     Logger.log("Contacts sheet unavailable: %s", err);
+    readError = err && err.message ? err.message : String(err);
     rows = [];
   }
 
@@ -181,10 +183,6 @@ function getOrderNotificationEmails_() {
       if (email) emails.push(email);
     });
 
-  if (!emails.length && CONFIG.officeEmail) {
-    emails.push(CONFIG.officeEmail);
-  }
-
   const deduped = [];
   const seen = new Set();
   emails.forEach((email) => {
@@ -195,7 +193,13 @@ function getOrderNotificationEmails_() {
     deduped.push(email);
   });
 
-  return deduped;
+  if (readError) {
+    return { emails: [], error: "Contacts sheet unavailable. Check the Contacts tab and permissions." };
+  }
+  if (!deduped.length) {
+    return { emails: [], error: "No notification emails found in Contacts sheet." };
+  }
+  return { emails: deduped, error: "" };
 }
 
 function extractOrderItems_(row) {
