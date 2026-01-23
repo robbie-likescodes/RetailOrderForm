@@ -212,10 +212,11 @@ function extractOrderItems_(row) {
   productKeys.forEach((num) => {
     const name = String(row[`product_${num}`] || "").trim();
     const qty = row[`qty_${num}`];
+    const status = String(row[`product_${num}_status`] || "").trim();
     if (!name && (qty === "" || qty === null || typeof qty === "undefined")) {
       return;
     }
-    items.push({ name, qty });
+    items.push({ name, qty, status, product_index: num });
   });
 
   return items;
@@ -251,5 +252,39 @@ function collectOrderItemsFromRow_(row) {
   return extractOrderItems_(row).map(item => ({
     name: String(item.name || "Item").trim(),
     qty: item.qty || "",
+    status: String(item.status || "").trim(),
+    product_index: item.product_index || "",
   }));
+}
+
+function normalizeItemKey_(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function mergeOrderItemsWithRow_(items, rowItems) {
+  const pool = new Map();
+  (rowItems || []).forEach((item) => {
+    const key = normalizeItemKey_(item.name || item.sku);
+    if (!key) return;
+    if (!pool.has(key)) pool.set(key, []);
+    pool.get(key).push(item);
+  });
+
+  const merged = (items || []).map((item) => {
+    const key = normalizeItemKey_(item.name || item.sku);
+    const candidates = pool.get(key);
+    const rowItem = candidates && candidates.length ? candidates.shift() : null;
+    return {
+      ...item,
+      qty: item.qty || rowItem?.qty || "",
+      status: rowItem?.status || item.status || "",
+      product_index: rowItem?.product_index || item.product_index || "",
+    };
+  });
+
+  pool.forEach((list) => {
+    list.forEach((item) => merged.push(item));
+  });
+
+  return merged;
 }
