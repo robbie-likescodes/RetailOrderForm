@@ -796,8 +796,10 @@ function mergeOrderItemsWithRow_(items, rowItems) {
 
 function normalizeMatchKey_(value) {
   return String(value || "")
+    .replace(/\u00A0/g, " ")
     .trim()
     .replace(/\s+/g, " ")
+    .replace(/\s*:\s*/g, ":")
     .toLowerCase();
 }
 
@@ -849,10 +851,23 @@ function buildOrderIifExport_(orderId) {
 
   const productMap = new Map();
   products.forEach((product) => {
-    const name = String(product.item_name || product.name || "").trim();
-    if (!name) return;
-    const normalized = normalizeMatchKey_(name);
-    if (!productMap.has(normalized)) productMap.set(normalized, product);
+    const primaryName = String(product.item_name || "").trim();
+    const fallbackName = String(product.name || "").trim();
+    const qbListValue = String(product.qb_list || "").trim();
+    const candidates = [primaryName, fallbackName].filter(Boolean);
+    candidates.forEach((name) => {
+      const normalized = normalizeMatchKey_(name);
+      if (!normalized) return;
+      if (!productMap.has(normalized)) {
+        productMap.set(normalized, product);
+        return;
+      }
+      const existing = productMap.get(normalized);
+      const existingQbList = String(existing?.qb_list || "").trim();
+      if (!existingQbList && qbListValue) {
+        productMap.set(normalized, product);
+      }
+    });
   });
 
   const missingItems = [];
