@@ -11,6 +11,7 @@ const ORDER_STATUS = {
   IN_PROGRESS: "In Progress",
   COMPLETE: "Complete",
 };
+const COMBINED_STATUS_FILTER = "Not Started or In Progress";
 
 let orders = [];
 let deliveryState = {};
@@ -417,7 +418,12 @@ function renderOrders() {
 
   const filteredOrders = currentStatusFilter === "All"
     ? normalizedWithStatus
-    : normalizedWithStatus.filter((order) => order.derivedStatus === currentStatusFilter);
+    : normalizedWithStatus.filter((order) => {
+      if (currentStatusFilter === COMBINED_STATUS_FILTER) {
+        return [ORDER_STATUS.NOT_STARTED, ORDER_STATUS.IN_PROGRESS].includes(order.derivedStatus);
+      }
+      return order.derivedStatus === currentStatusFilter;
+    });
 
   if (!filteredOrders.length) {
     const empty = document.createElement("div");
