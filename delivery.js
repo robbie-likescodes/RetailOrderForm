@@ -513,9 +513,10 @@ function renderOrders() {
           }
 
           const itemInfo = document.createElement("div");
+          const unitLabel = item.unit ? `Unit: ${item.unit}` : "";
           itemInfo.innerHTML = `
             <div class="historyItem__name">${escapeHtml(item.name || item.sku || "Item")}</div>
-            <div class="historyItem__meta">${escapeHtml([item.item_no, item.unit, item.pack_size, `Ordered: ${item.qty}`].filter(Boolean).join(" • "))}</div>
+            <div class="historyItem__meta">${escapeHtml([item.item_no, unitLabel, item.pack_size, `Ordered: ${item.qty}`].filter(Boolean).join(" • "))}</div>
             <div class="deliveryItem__status">Status: ${escapeHtml(statusLabel)}</div>
           `;
 
