@@ -21,6 +21,7 @@ const state = {
   catalog: null,
   ordersUpdatedAt: "",
   deliveryState: {},
+  qbMissingEls: new Map(),
   filter: {
     start: null,
     end: null,
@@ -205,68 +206,6 @@ function sortItems(items) {
   });
 }
 
-function formatIifDate(value) {
-  const date = parseDate(value) || new Date();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const year = String(date.getFullYear());
-  return `${month}/${day}/${year}`;
-}
-
-function escapeIifField(value) {
-  return String(value ?? "")
-    .replace(/[\t\r\n]+/g, " ")
-    .trim();
-}
-
-/**
- * Sample IIF output for a 2-item sales order:
- * !TRNS	TRNSTYPE	DATE	ACCNT	NAME	DOCNUM	MEMO
- * !SPL	TRNSTYPE	DATE	ACCNT	NAME	QNTY	ITEM	MEMO
- * TRNS	SALES ORDER	02/14/2025	Sales Orders	Brewery Store	ORD-1001	Imported from Retail Order Portal
- * SPL	SALES ORDER	02/14/2025	Sales Orders	Brewery Store	2	Store Milk Products:Whole Milk	Whole Milk
- * SPL	SALES ORDER	02/14/2025	Sales Orders	Brewery Store	1	Store Milk Products:Skim Milk	Skim Milk
- * ENDTRNS
- */
-function buildIifForOrder(order, items) {
-  const orderId = String(order?.order_id || "").trim();
-  const customerName = String(order?.store || "Unknown Store").trim();
-  const orderDate = formatIifDate(order?.created_at);
-  const memo = "Imported from Retail Order Portal";
-  const accountName = "Sales Orders";
-  const headerLines = [
-    "!TRNS\tTRNSTYPE\tDATE\tACCNT\tNAME\tDOCNUM\tMEMO",
-    "!SPL\tTRNSTYPE\tDATE\tACCNT\tNAME\tQNTY\tITEM\tMEMO",
-  ];
-
-  const lines = [...headerLines];
-  lines.push([
-    "TRNS",
-    "SALES ORDER",
-    orderDate,
-    accountName,
-    customerName,
-    orderId,
-    memo,
-  ].map(escapeIifField).join("\t"));
-
-  items.forEach((item) => {
-    lines.push([
-      "SPL",
-      "SALES ORDER",
-      orderDate,
-      accountName,
-      customerName,
-      String(item.qty || ""),
-      item.qb_list || "",
-      item.name || item.sku || "",
-    ].map(escapeIifField).join("\t"));
-  });
-
-  lines.push("ENDTRNS");
-  return `${lines.join("\n")}\n`;
-}
-
 function downloadIifFile(content, filename) {
   const blob = new Blob([content], { type: "text/plain" });
   const url = URL.createObjectURL(blob);
@@ -279,25 +218,24 @@ function downloadIifFile(content, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function exportOrderToIIF(orderId) {
+function updateMissingMappingUI(orderId, missingItems) {
+  const element = state.qbMissingEls.get(orderId);
+  if (!element) return;
+  if (!missingItems || !missingItems.length) {
+    element.hidden = true;
+    element.textContent = "";
+    return;
+  }
+  element.hidden = false;
+  element.textContent = `Missing QB Mapping: ${missingItems.join(", ")}`;
+}
+
+async function exportOrderToIIF(orderId) {
   const safeOrderId = String(orderId || "").trim();
   const order = state.orders.find(
     (entry) => String(entry.order_id || "").trim() === safeOrderId
   );
-  const itemsByOrder = groupItemsByOrder(state.items);
-  const rawItems = sortItems(itemsByOrder.get(safeOrderId) || []);
-  const items = rawItems
-    .map((item) => ({
-      ...item,
-      qb_list: item.qb_list || "",
-    }))
-    .filter((item) => {
-      const qty = Number(item.qty || 0);
-      return Number.isFinite(qty) && qty > 0;
-    });
-
   console.log("[History] QuickBooks export selected order", { orderId: safeOrderId, order });
-  console.log("[History] QuickBooks export line items", items);
 
   if (!order) {
     showError("Unable to export. Order not found.");
@@ -305,29 +243,37 @@ function exportOrderToIIF(orderId) {
     return;
   }
 
-  if (!items.length) {
-    showError("No line items with quantity greater than zero were found for this order.");
-    AppClient.showToast("QuickBooks export failed. No items to export.", "warning");
-    return;
-  }
-
-  const missingQbList = items.filter((item) => !String(item.qb_list || "").trim());
-  if (missingQbList.length) {
-    console.log("[History] QuickBooks export missing QB List items", missingQbList);
-    const missingNames = missingQbList.map((item) => item.name || item.sku || "Item").join(", ");
-    showError(
-      `Cannot export this order. Missing QB List mapping for: ${missingNames}. ` +
-        "Add QB List mapping in the Retail Order Form Database sheet."
-    );
-    AppClient.showToast("QuickBooks export failed. Missing QB List mapping.", "error");
-    return;
-  }
-
   showError("");
-  const iifText = buildIifForOrder(order, items);
-  const safeFileName = safeOrderId ? `sales-order-${safeOrderId}.iif` : `sales-order-${Date.now()}.iif`;
-  downloadIifFile(iifText, safeFileName);
-  AppClient.showToast("QuickBooks IIF downloaded.", "success");
+
+  try {
+    const response = await AppClient.apiFetch("exportOrderIif", {
+      params: { order_id: safeOrderId },
+      cacheBust: true,
+    });
+    const iifText = response.iif_text || "";
+    const missingItems = Array.isArray(response.missing_items) ? response.missing_items : [];
+    console.log("[History] QuickBooks export line items", response.items || []);
+    console.log("[History] QuickBooks export missing QB List items", missingItems);
+    updateMissingMappingUI(safeOrderId, missingItems);
+    if (missingItems.length) {
+      AppClient.showToast("QuickBooks export generated with missing QB mappings.", "warning");
+    } else {
+      AppClient.showToast("QuickBooks IIF downloaded.", "success");
+    }
+
+    if (!iifText) {
+      showError("QuickBooks export failed. Empty export content.");
+      AppClient.showToast("QuickBooks export failed.", "error");
+      return;
+    }
+
+    const safeFileName = safeOrderId ? `sales-order-${safeOrderId}.iif` : `sales-order-${Date.now()}.iif`;
+    downloadIifFile(iifText, safeFileName);
+  } catch (err) {
+    const message = err.userMessage || err.message || String(err);
+    showError(message);
+    AppClient.showToast("QuickBooks export failed.", "error");
+  }
 }
 
 function filterOrdersByDate(orders) {
@@ -360,6 +306,7 @@ function applyOrdersPayload(payload) {
 function renderHistory() {
   ui.content.innerHTML = "";
   loadDeliveryState();
+  state.qbMissingEls = new Map();
 
   const filteredOrders = filterOrdersByDate(state.orders);
 
@@ -420,7 +367,7 @@ function renderHistory() {
       const qbButton = document.createElement("button");
       qbButton.type = "button";
       qbButton.className = "btn btn--small historyOrder__qbBtn";
-      qbButton.textContent = "Import to QuickBooks";
+      qbButton.textContent = "Export for QB";
       qbButton.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -444,6 +391,10 @@ function renderHistory() {
       const items = sortItems(itemsByOrder.get(orderId) || []);
       const itemsWrap = document.createElement("div");
       itemsWrap.className = "historyItems";
+      const missingWrap = document.createElement("div");
+      missingWrap.className = "historyOrder__qbMissing";
+      missingWrap.hidden = true;
+      state.qbMissingEls.set(orderId, missingWrap);
 
       if (!items.length) {
         itemsWrap.innerHTML = `<div class="historyEmpty">No items recorded for this order.</div>`;
@@ -486,7 +437,7 @@ function renderHistory() {
         });
       }
 
-      orderBody.appendChild(itemsWrap);
+      orderBody.append(missingWrap, itemsWrap);
       orderDetails.appendChild(orderBody);
       ordersWrap.appendChild(orderDetails);
     });

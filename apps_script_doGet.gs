@@ -7,7 +7,7 @@ function doGet(e) {
       return jsonResponse(buildError_(
         "Missing action.",
         "MISSING_ACTION",
-        { expected: ["categories", "products", "listOrders", "health"] },
+        { expected: ["categories", "products", "listOrders", "exportOrderIif", "health"] },
         requestId
       ));
     }
@@ -172,6 +172,24 @@ function doGet(e) {
       }, requestId));
     }
 
+    if (action === "exportorderiif") {
+      const orderId = String((e && e.parameter && e.parameter.order_id) || "").trim();
+      if (!orderId) {
+        return jsonResponse(buildError_("Missing order_id.", "MISSING_ORDER_ID", null, requestId));
+      }
+
+      const exportPayload = buildOrderIifExport_(orderId);
+      if (exportPayload.error) {
+        return jsonResponse(buildError_(exportPayload.error, "EXPORT_FAILED", exportPayload.details, requestId));
+      }
+      return jsonResponse(buildSuccess_({
+        action: "exportOrderIif",
+        request_id: requestId,
+        order_id: orderId,
+        ...exportPayload,
+      }, requestId));
+    }
+
     if (action === "health") {
       const categories = getSheetRows_(CONFIG.sheets.categories);
       const products = getSheetRows_(CONFIG.sheets.products);
@@ -189,7 +207,7 @@ function doGet(e) {
     return jsonResponse(buildError_(
       `Unknown action: ${action}`,
       "UNKNOWN_ACTION",
-      { received: action, expected: ["categories", "products", "listOrders", "health"] },
+      { received: action, expected: ["categories", "products", "listOrders", "exportOrderIif", "health"] },
       requestId
     ));
   } catch (err) {

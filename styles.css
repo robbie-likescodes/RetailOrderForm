@@ -436,6 +436,16 @@ body{
   flex-shrink: 0;
 }
 
+.historyOrder__qbMissing{
+  font-size: 12px;
+  font-weight: 600;
+  color: #b91c1c;
+  background: #fee2e2;
+  border: 1px solid rgba(185, 28, 28, 0.2);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
 
 .historyOrder__body{
   padding: 0 14px 14px;
